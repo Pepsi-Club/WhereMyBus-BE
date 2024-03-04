@@ -27,25 +27,23 @@ def api_call(arsId):
             
             msg_body = root.find('./msgBody')
             item_list = msg_body.findall('./itemList')
-            
+
             if not item_list:
                 print(f"Error: 'itemList' not found for arsId {arsId}")
                 return "itemList없음"
-            
-            # itemList의 item들을 돌면서 'nxtStn' 값을 추출
+
+            # itemList를 순회하면서 'nxtStn' 값을 추출
             for item in item_list:
-                nxt_stn_element = item.find('./nxtStn')
-                # item에 nxtStn 값이 있으면 그 값 반환
-                if nxt_stn_element is not None:
-                    return nxt_stn_element.text
-                else:
-                    print(f"Warning: 'nxtStn' not found in XML for arsId {arsId}.")
-                    return "item에 nxtStn없음"
+                nxt_stn = item.find('./nxtStn').text.strip()
+                if nxt_stn != "":
+                    return nxt_stn
+
+            return f"nxtStn 없음"
 
         except ET.ParseError as e:
             print(f"Error: Failed to parse XML for arsId {arsId}. Error details: {e}")
             return "xml파싱에러"
-    
+
     else:
         print(f"Error: API call failed for arsId {arsId}. Status code: {response.status_code}")
         return "api 통신에러"
