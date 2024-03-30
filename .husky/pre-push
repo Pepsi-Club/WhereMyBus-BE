@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/h"
 
 cd server
-npm run test
+npm test
