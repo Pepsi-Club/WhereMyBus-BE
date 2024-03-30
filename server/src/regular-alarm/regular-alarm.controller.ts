@@ -13,6 +13,15 @@ export class RegularAlarmController {
     return await this.regularAlarmService.enrollAlarm(enrollRegularDto);
   }
 
+  @Delete()
+  async deleteAlarm(
+    @Param('deviceToken') deviceToken: string,
+    @Param('alarmId') alarmId: string,
+  ) {
+    await this.regularAlarmService.deleteAlarm(deviceToken, alarmId);
+    return { message: 'delete success' };
+  }
+
   @Get('get')
   async getAll() {
     return this.regularAlarmService.getAll();
