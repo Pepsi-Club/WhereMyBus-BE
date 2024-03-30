@@ -19,7 +19,7 @@ export class EnrollRequestDto {
   @IsNumber({}, { each: true, message: '요일을 숫자로 나타내주세요' })
   @ArrayMinSize(1, { message: '알람받을 요일이 하루 이상이어야합니다.' })
   @ArrayMaxSize(7, { message: '알람받을 요일이 7개 초과일 수 없습니다.' })
-  activeDay: number[];
+  day: number[];
 
   @IsNumber()
   busRouteId: number;
