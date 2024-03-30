@@ -5,6 +5,8 @@ export type RegularAlarmDocument = HydratedDocument<RegularAlarm>;
 
 @Schema()
 export class RegularAlarm {
+  _id?: string;
+
   @Prop()
   deviceToken: string;
 
