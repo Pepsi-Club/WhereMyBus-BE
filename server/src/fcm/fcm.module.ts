@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FcmService } from './fcm.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { FcmController } from './fcm.controller';
 import * as admin from 'firebase-admin';
 
 const FirebaseProvider = {
@@ -19,6 +18,7 @@ const FirebaseProvider = {
 
 @Module({
   providers: [FcmService, FirebaseProvider],
-  controllers: [FcmController],
+  controllers: [],
+  exports: [FcmService],
 })
 export class FcmModule {}
