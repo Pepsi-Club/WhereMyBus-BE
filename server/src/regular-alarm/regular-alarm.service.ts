@@ -18,16 +18,14 @@ export class RegularAlarmService {
   }
 
   async deleteAlarm(deviceToken: string, alarmId: string) {
-    const findAlarm = await this.regularAlarmModel.find({
+    const findAlarm = await this.regularAlarmModel.findOneAndDelete({
       _id: alarmId,
       deviceToken: deviceToken,
     });
 
-    if (findAlarm.length < 1) {
+    if (!findAlarm) {
       throw new BadRequestException('올바르지 않은 알람정보입니다.');
     }
-
-    await this.regularAlarmModel.deleteOne({ id: alarmId });
   }
 
   async getAll(): Promise<RegularAlarm[]> {
