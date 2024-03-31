@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { app } from 'firebase-admin';
+import { MESSAGE } from '../../common/message';
 
 @Injectable()
 export class FcmService {
@@ -9,7 +10,7 @@ export class FcmService {
     const payload = {
       token: deviceToken,
       notification: {
-        title: '버스어디',
+        title: MESSAGE.NOTIFICATION.TITLE,
         body: message,
       },
     };

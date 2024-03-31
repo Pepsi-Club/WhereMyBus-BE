@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { RegularAlarm } from './regular-alarm.schema';
 import { EnrollRequestDto } from './dto/request/enroll.request.dto';
 import { find } from 'rxjs';
+import { MESSAGE } from '../../common/message';
 
 @Injectable()
 export class RegularAlarmService {
@@ -24,7 +25,7 @@ export class RegularAlarmService {
     });
 
     if (!findAlarm) {
-      throw new BadRequestException('올바르지 않은 알람정보입니다.');
+      throw new BadRequestException(MESSAGE.EXCEPTION.ALARM_INFO_ERROR);
     }
   }
 
