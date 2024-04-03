@@ -130,9 +130,4 @@ describe('RegularAlarmService', () => {
       await target.transform(<EnrollRequestDto>dto2, metadata);
     }).rejects.toThrow(BadRequestException);
   });
-
-  it('버스도착정보조회', async () => {
-    const result = await service.busArriveInfo(121900016, 22285);
-    console.log(result);
-  });
 });

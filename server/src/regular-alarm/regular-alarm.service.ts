@@ -40,15 +40,4 @@ export class RegularAlarmService {
   async getAll(): Promise<RegularAlarm[]> {
     return this.regularAlarmModel.find();
   }
-
-  async busArriveInfo(busRouteId: number, arsId: number): Promise<string> {
-    const requestUrl = `${this.apiUrl}?ServiceKey=${this.serviceKey}&arsId=${arsId}&resultType=json`;
-    const result = (await axios.get(requestUrl)).data;
-    if (result.msgHeader.headerCd !== '0') {
-      throw new Error('버스 도착 정보 조회 실패');
-    }
-    const infoList = result.msgBody.itemList;
-    const info = infoList.filter((each) => each.busRouteId == busRouteId);
-    return info[0].arrmsg1;
-  }
 }

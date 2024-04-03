@@ -7,6 +7,7 @@ import * as process from 'process';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MongooseConfigService } from './config/mongoose.config';
 import { FcmModule } from './fcm/fcm.module';
+import { BusInfoModule } from './bus-info/bus-info.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { FcmModule } from './fcm/fcm.module';
     }),
     RegularAlarmModule,
     FcmModule,
+    BusInfoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
