@@ -17,10 +17,10 @@ export class RegularAlarm {
   day: number[];
 
   @Prop()
-  busRouteId: number;
+  busRouteId: string;
 
   @Prop()
-  arsId: number;
+  arsId: string;
 }
 
 export const RegularAlarmSchema = SchemaFactory.createForClass(RegularAlarm);

@@ -1,10 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BusInfoService } from './bus-info.service';
-import { MongooseModule } from '@nestjs/mongoose';
-import {
-  RegularAlarm,
-  RegularAlarmSchema,
-} from '../regular-alarm/regular-alarm.schema';
 import { ConfigModule } from '@nestjs/config';
 
 describe('BusInfoService', () => {
@@ -24,7 +19,7 @@ describe('BusInfoService', () => {
   });
 
   it('버스도착정보조회', async () => {
-    const result = await service.arrive(121900016, 22285);
+    const result = await service.arriveEachBus('22285', '121900016');
     console.log(result);
   });
 });

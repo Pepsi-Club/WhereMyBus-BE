@@ -22,9 +22,7 @@ export class EnrollRequestDto {
   @ArrayMaxSize(7, { message: MESSAGE.DTO.REGULAR_ALARM.DAY_LENGTH_MAX })
   day: number[];
 
-  @IsNumber()
-  busRouteId: number;
+  busRouteId: string;
 
-  @IsNumber()
-  arsId: number;
+  arsId: string;
 }
