@@ -46,11 +46,15 @@ export class RegularAlarmService {
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
-  async sendNotification() {
+  async regularAlarm() {
     const now = new Date();
     const time = this.timeString(now);
     const day = now.getDay();
 
+    await this.sendNotification(time, day);
+  }
+
+  async sendNotification(time: string, day: number) {
     const infos = await this.getEnrolledRegularAlarm(time, day);
     const stationArrivalInfoMap: Map<string, ResponseData> = new Map();
     for (const info of infos) {
@@ -61,13 +65,14 @@ export class RegularAlarmService {
         stationArrivalInfoMap.set(stationId, result);
       }
     }
+
     const wrongData = [];
     infos.forEach((info) => {
       const busInfo = stationArrivalInfoMap
         .get(info.arsId)
         .msgBody.itemList.filter((each) => each.busRouteId === info.busRouteId);
       if (busInfo.length > 0) {
-        const message = `${busInfo[0].busRouteAbrv} ${busInfo[0].arrmsg1}`;
+        const message = `${busInfo[0].stNm} ${busInfo[0].busRouteAbrv} ${busInfo[0].arrmsg1}`;
         this.fcmService.send(info.deviceToken, message);
       } else {
         this.fcmService.send(info.deviceToken, MESSAGE.NOTIFICATION.ERROR);
@@ -75,9 +80,8 @@ export class RegularAlarmService {
       }
     });
 
-    this.regularAlarmModel.deleteMany({ id: { $in: wrongData } });
+    await this.regularAlarmModel.deleteMany({ _id: { $in: wrongData } });
   }
-
   async getEnrolledRegularAlarm(time: string, weekday: number) {
     return this.regularAlarmModel.find({
       time: time,

@@ -11,6 +11,9 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { BusInfoService } from '../../bus-info/bus-info.service';
+import { FcmService } from '../../fcm/fcm.service';
+import { FirebaseProvider } from '../../config/firbase.config';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -31,7 +34,12 @@ describe('RegularAlarmService', () => {
           envFilePath: '.env.dev',
         }),
       ],
-      providers: [RegularAlarmService],
+      providers: [
+        RegularAlarmService,
+        BusInfoService,
+        FirebaseProvider,
+        FcmService,
+      ],
     }).compile();
 
     service = module.get<RegularAlarmService>(RegularAlarmService);
@@ -51,13 +59,13 @@ describe('RegularAlarmService', () => {
 
   it('정규알람을 저장할 수 있다.', async () => {
     const dto = new EnrollRequestDto();
-    dto.arsId = 1234;
+    dto.arsId = '1234';
     dto.time = '0828';
-    dto.busRouteId = 132412;
+    dto.busRouteId = '132412';
     dto.deviceToken = 'test';
     dto.day = [1, 2, 3];
     const result = await service.enrollAlarm(dto);
-    expect(result.arsId).toBe(1234);
+    expect(result.arsId).toBe('1234');
   });
 
   it('알 수 없는 값으로 삭제하면 예외가 발생한다', () => {
@@ -75,17 +83,17 @@ describe('RegularAlarmService', () => {
     };
 
     const dto1 = {
-      arsId: 1234,
+      arsId: '1234',
       time: '828',
-      busRouteId: 132412,
+      busRouteId: '132412',
       deviceToken: 'test',
       day: [1, 2, 3],
     };
 
     const dto2 = {
-      arsId: 1234,
+      arsId: '1234',
       time: '82822',
-      busRouteId: 132412,
+      busRouteId: '132412',
       deviceToken: 'test',
       day: [1, 2, 3],
     };
@@ -107,17 +115,17 @@ describe('RegularAlarmService', () => {
     };
 
     const dto1 = {
-      arsId: 1234,
+      arsId: '1234',
       time: '0828',
-      busRouteId: 132412,
+      busRouteId: '132412',
       deviceToken: 'test',
       day: [],
     };
 
     const dto2 = {
-      arsId: 1234,
+      arsId: '1234',
       time: '0828',
-      busRouteId: 132412,
+      busRouteId: '132412',
       deviceToken: 'test',
       day: [1, 2, 3, 4, 5, 6, 7, 8],
     };
@@ -129,5 +137,99 @@ describe('RegularAlarmService', () => {
     expect(async () => {
       await target.transform(<EnrollRequestDto>dto2, metadata);
     }).rejects.toThrow(BadRequestException);
+  });
+
+  it('현재 시간을 올바르게 포매팅할 수 있다.', () => {
+    const midnight = new Date(1998, 11, 1, 0, 1);
+    expect(service.timeString(midnight)).toBe('0001');
+
+    const randomDate = new Date(1998, 11, 1, 18, 29);
+    expect(service.timeString(randomDate)).toBe('1829');
+  });
+
+  it('현재 요일의 발송 정보만 조회할 수 있다.', async () => {
+    const sunday = new Date('December 17, 1995 08:00:00');
+
+    const weekday = {
+      arsId: 'weekday',
+      time: '0800',
+      busRouteId: '132412',
+      deviceToken: 'test',
+      day: [1, 2, 3, 4, 5],
+    };
+
+    const weekend = {
+      arsId: 'weekend',
+      time: '0800',
+      busRouteId: '132412',
+      deviceToken: 'test',
+      day: [0, 6],
+    };
+    await service.enrollAlarm(weekday);
+    await service.enrollAlarm(weekend);
+
+    const result = await service.getEnrolledRegularAlarm(
+      service.timeString(sunday),
+      sunday.getDay(),
+    );
+    expect(result.length).toBe(1);
+    expect(result[0].arsId).toBe('weekend');
+  });
+
+  it('현재 시간의 발송 정보만 조회할 수 있다.', async () => {
+    const sunday = new Date('December 17, 1995 03:24:00');
+
+    const threeTwentyFour = {
+      arsId: '222222',
+      time: '0324',
+      busRouteId: '132412',
+      deviceToken: 'test',
+      day: [0, 1, 2, 3, 4, 5, 6],
+    };
+
+    const eight = {
+      arsId: '222222',
+      time: '0800',
+      busRouteId: '132412',
+      deviceToken: 'test',
+      day: [0, 1, 2, 3, 4, 5, 6],
+    };
+    await service.enrollAlarm(threeTwentyFour);
+    await service.enrollAlarm(eight);
+
+    const result = await service.getEnrolledRegularAlarm(
+      service.timeString(sunday),
+      sunday.getDay(),
+    );
+    expect(result.length).toBe(1);
+    expect(result[0].time).toBe('0324');
+  });
+
+  it('해당 정류장에 존재하지 않는 버스 노선 정보로 등록된 정규알림 정보는 삭제된다.', async () => {
+    const now = new Date('December 17, 1995 03:24:00');
+
+    const wrong = {
+      arsId: '22285',
+      time: service.timeString(now),
+      busRouteId: '1',
+      deviceToken: 'test',
+      day: [0, 1, 2, 3, 4, 5, 6],
+    };
+
+    const right = {
+      arsId: '22285',
+      time: service.timeString(now),
+      busRouteId: '121900016',
+      deviceToken: 'test',
+      day: [0, 1, 2, 3, 4, 5, 6],
+    };
+
+    await service.enrollAlarm(wrong);
+    await service.enrollAlarm(right);
+
+    await service.sendNotification(service.timeString(now), now.getDay());
+
+    const result = await service.getAll();
+    expect(result.length).toBe(1);
   });
 });
