@@ -10,6 +10,7 @@ import {
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -26,6 +27,9 @@ describe('RegularAlarmService', () => {
         MongooseModule.forFeature([
           { name: RegularAlarm.name, schema: RegularAlarmSchema },
         ]),
+        ConfigModule.forRoot({
+          envFilePath: '.env.dev',
+        }),
       ],
       providers: [RegularAlarmService],
     }).compile();
@@ -125,5 +129,10 @@ describe('RegularAlarmService', () => {
     expect(async () => {
       await target.transform(<EnrollRequestDto>dto2, metadata);
     }).rejects.toThrow(BadRequestException);
+  });
+
+  it('버스도착정보조회', async () => {
+    const result = await service.busArriveInfo(121900016, 22285);
+    console.log(result);
   });
 });

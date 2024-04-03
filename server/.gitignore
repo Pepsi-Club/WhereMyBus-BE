@@ -2,6 +2,7 @@
 /dist
 /node_modules
 .env.*
+firebase-adminsdk.json
 
 # Logs
 logs

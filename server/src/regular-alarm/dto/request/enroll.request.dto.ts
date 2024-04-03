@@ -6,19 +6,20 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { MESSAGE } from '../../../../common/message';
 
 export class EnrollRequestDto {
   @IsString()
   deviceToken: string;
 
   @IsString()
-  @MinLength(4, { message: '시간을 4자리로 입력해주세요.' })
-  @MaxLength(4, { message: '시간을 4자리로 입력해주세요.' })
+  @MinLength(4, { message: MESSAGE.DTO.REGULAR_ALARM.TIME })
+  @MaxLength(4, { message: MESSAGE.DTO.REGULAR_ALARM.TIME })
   time: string;
 
-  @IsNumber({}, { each: true, message: '요일을 숫자로 나타내주세요' })
-  @ArrayMinSize(1, { message: '알람받을 요일이 하루 이상이어야합니다.' })
-  @ArrayMaxSize(7, { message: '알람받을 요일이 7개 초과일 수 없습니다.' })
+  @IsNumber({}, { each: true, message: MESSAGE.DTO.REGULAR_ALARM.DAY_TYPE })
+  @ArrayMinSize(1, { message: MESSAGE.DTO.REGULAR_ALARM.DAY_LENGTH_MIN })
+  @ArrayMaxSize(7, { message: MESSAGE.DTO.REGULAR_ALARM.DAY_LENGTH_MAX })
   day: number[];
 
   @IsNumber()
