@@ -1,6 +1,7 @@
 export const MESSAGE = {
   NOTIFICATION: {
     TITLE: '버스어디',
+    ERROR: '정규알람 등록 정보가 잘못되었습니다. 재등록해주세요.',
   },
   EXCEPTION: {
     ALARM_INFO_ERROR: '올바르지 않은 알람정보입니다.',
