@@ -26,6 +26,8 @@ jobs:
         run: |
           echo "${{secrets.ENV_TEST}}" > ./server/.env.dev
           echo "${{secrets.FIREBASE}}" > ./server/firebase-adminsdk.json
+          pwd
+          ls server
 
       - name: ✅ 유닛 테스트
         working-directory: ./server
