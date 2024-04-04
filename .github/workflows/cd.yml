@@ -16,7 +16,7 @@ jobs:
       - name: 👻 노드 설정
         uses: actions/setup-node@v3
         with:
-          node-version: "21"
+          node-version: "20"
 
       - name: 🏃‍♂️ Deploy
         uses: appleboy/ssh-action@v1.0.0
@@ -27,7 +27,7 @@ jobs:
           port: ${{secrets.PORT}}
           script: |
             cd /home/ubuntu/WhereMyBus-BE/server
-            echo "${{secrets.ENV}}" > .env
+            echo "${{secrets.ENV}}" > .env.prod
             git pull origin main
             npm ci
             npm build
