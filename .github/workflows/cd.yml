@@ -1,0 +1,35 @@
+name: backEnd API server CD
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  api-server-cd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ✅ 코드 체크아웃
+        uses: actions/checkout@v3
+
+      - name: 👻 노드 설정
+        uses: actions/setup-node@v3
+        with:
+          node-version: "21"
+
+      - name: 🏃‍♂️ Deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{secrets.HOST}}
+          username: ${{secrets.USER}}
+          key: ${{secrets.PEM_KEY}}
+          port: ${{secrets.PORT}}
+          script: |
+            cd /home/ubuntu/WhereMyBus-BE/server
+            echo "${{secrets.ENV}}" > .env
+            git pull origin main
+            npm ci
+            npm build
+            pm2 reload ecosystem.config.js
+            
