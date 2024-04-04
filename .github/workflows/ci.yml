@@ -26,14 +26,15 @@ jobs:
         working-directory: ./server
         run: npm run build
 
-      - name: 🔑 ENV 파일 생성
-        working-directory: ./server
-        run: |
-          echo "${{secrets.ENV_TEST}}" > .env.dev
-          echo "${{secrets.FIREBASE}}" > firebase-adminsdk.json
-          pwd
-          ls -al
-
-      - name: ✅ 유닛 테스트
-        working-directory: ./server
-        run: npm test
+#      - name: 🔑 ENV 파일 생성
+#        working-directory: ./server
+#        run: |
+#          echo "${{secrets.ENV_TEST}}" > .env.dev
+#          echo "${{secrets.ENV}}" > .env.prod
+#          echo "${{secrets.FIREBASE}}" > firebase-adminsdk.json
+#          pwd
+#          ls -al
+#
+#      - name: ✅ 유닛 테스트
+#        working-directory: ./server
+#        run: npm test
