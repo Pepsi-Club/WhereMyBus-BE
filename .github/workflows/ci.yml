@@ -22,8 +22,9 @@ jobs:
         working-directory: ./server
         run: npm install
 
-      - name: 🔑 Firebase Admin SDK JSON 파일 생성
+      - name: 🔑 ENV 파일 생성
         run: |
+          echo "${{secrets.ENV_TEST}}" > ./server/.env.dev
           echo "${{secrets.FIREBASE}}" > ./server/firebase-adminsdk.json
 
       - name: ✅ 유닛 테스트
