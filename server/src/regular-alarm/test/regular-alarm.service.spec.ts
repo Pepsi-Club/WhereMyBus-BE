@@ -13,7 +13,6 @@ import {
 import { ConfigModule } from '@nestjs/config';
 import { BusInfoService } from '../../bus-info/bus-info.service';
 import { FcmService } from '../../fcm/fcm.service';
-import { FirebaseProvider } from '../../config/firbase.config';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -34,12 +33,7 @@ describe('RegularAlarmService', () => {
           envFilePath: '.env.dev',
         }),
       ],
-      providers: [
-        RegularAlarmService,
-        BusInfoService,
-        FirebaseProvider,
-        FcmService,
-      ],
+      providers: [RegularAlarmService, BusInfoService, FcmService],
     }).compile();
 
     service = module.get<RegularAlarmService>(RegularAlarmService);

@@ -1,4 +1,4 @@
-name: backEnd API server CI
+name: backEnd server CI
 on:
   pull_request:
     branches: [dev, main]
@@ -13,19 +13,27 @@ jobs:
       - name: ✅ 코드 체크아웃
         uses: actions/checkout@v3
 
-      - name : 👻 노드 설정
-        uses : actions/setup-node@v3
+      - name: 👻 노드 설정
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: "21"
 
       - name: ⬇️ 의존성 설치
         working-directory: ./server
-        run: npm install
-
-      - name: ✅ 유닛 테스트
-        working-directory: ./server
-        run: npm test
+        run: npm ci -y
 
       - name: 📦 프로젝트 빌드
         working-directory: ./server
         run: npm run build
+
+      - name: 🔑 ENV 파일 생성
+        working-directory: ./server
+        run: |
+          echo "${{secrets.ENV_TEST}}" > .env.dev
+          echo "${{secrets.FIREBASE}}" > firebase-adminsdk.json
+          pwd
+          ls -al
+
+      - name: ✅ 유닛 테스트
+        working-directory: ./server
+        run: npm test

@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'app',
       script: 'npm',
-      args: 'start:prod',
+      args: 'start',
       instances: 0,
       exec_mode: 'cluster',
       wait_ready: true,

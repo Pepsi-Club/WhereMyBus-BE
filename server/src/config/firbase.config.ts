@@ -1,5 +1,5 @@
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 export const FirebaseProvider = {
   provide: 'FIREBASE_APP',
