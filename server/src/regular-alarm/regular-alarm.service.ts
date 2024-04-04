@@ -72,7 +72,7 @@ export class RegularAlarmService {
         .get(info.arsId)
         .msgBody.itemList.filter((each) => each.busRouteId === info.busRouteId);
       if (busInfo.length > 0) {
-        const message = `${busInfo[0].stNm} ${busInfo[0].busRouteAbrv} ${busInfo[0].arrmsg1}`;
+        const message = `${busInfo[0].busRouteAbrv} ${busInfo[0].arrmsg1}`;
         this.fcmService.send(info.deviceToken, message);
       } else {
         this.fcmService.send(info.deviceToken, MESSAGE.NOTIFICATION.ERROR);
