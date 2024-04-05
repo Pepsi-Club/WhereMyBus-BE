@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { app } from 'firebase-admin';
-import { MESSAGE } from '../../common/message';
+import { MESSAGE } from '../common/message';
 import * as admin from 'firebase-admin';
 
 @Injectable()
