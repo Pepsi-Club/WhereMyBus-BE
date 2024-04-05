@@ -18,10 +18,6 @@ jobs:
         with:
           node-version: "21"
 
-      - name: Install PM2
-        run: |
-          npm install pm2@latest -g
-
       - name: 🏃‍♂️ Deploy
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -37,4 +33,3 @@ jobs:
             npm ci -y
             npm run build
             pm2 reload ecosystem.config.js
-            
