@@ -6,7 +6,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { MESSAGE } from '../../../../common/message';
+import { MESSAGE } from '../../../common/message';
 
 export class EnrollRequestDto {
   @IsString()

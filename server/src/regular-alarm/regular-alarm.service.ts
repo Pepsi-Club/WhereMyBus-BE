@@ -1,19 +1,22 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { RegularAlarm } from './regular-alarm.schema';
 import { EnrollRequestDto } from './dto/request/enroll.request.dto';
-import { MESSAGE } from '../../common/message';
+import { MESSAGE } from '../common/message';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { ResponseData } from '../bus-info/arrival-info.type';
+import * as path from 'path';
 
 @Injectable()
 export class RegularAlarmService {
   private readonly serviceKey;
   private readonly apiUrl;
+  private logger = new Logger(RegularAlarmService.name);
+
   constructor(
     @InjectModel(RegularAlarm.name)
     private regularAlarmModel: Model<RegularAlarm>,
@@ -50,12 +53,13 @@ export class RegularAlarmService {
     const now = new Date();
     const time = this.timeString(now);
     const day = now.getDay();
-
+    this.logger.log(`${time}, ${day} - regularAlarm`);
     await this.sendNotification(time, day);
   }
 
   async sendNotification(time: string, day: number) {
     const infos = await this.getEnrolledRegularAlarm(time, day);
+    this.logger.log(`${infos.length} regular alarm founded`);
     const stationArrivalInfoMap: Map<string, ResponseData> = new Map();
     for (const info of infos) {
       const stationId = info.arsId;
@@ -73,7 +77,11 @@ export class RegularAlarmService {
         .msgBody.itemList.filter((each) => each.busRouteId === info.busRouteId);
       if (busInfo.length > 0) {
         const message = `${busInfo[0].busRouteAbrv} ${busInfo[0].arrmsg1}`;
-        this.fcmService.send(info.deviceToken, message);
+        try {
+          this.fcmService.send(info.deviceToken, message);
+        } catch (e) {
+          this.logger.error(e);
+        }
       } else {
         this.fcmService.send(info.deviceToken, MESSAGE.NOTIFICATION.ERROR);
         wrongData.push(info._id);
