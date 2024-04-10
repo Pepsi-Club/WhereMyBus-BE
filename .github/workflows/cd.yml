@@ -28,8 +28,7 @@ jobs:
           script: |
             cd /home/ubuntu/WhereMyBus-BE/server
             echo "${{secrets.ENV}}" > .env.prod
-            echo "${{secrets.FIREBASE}}" > firebase-adminsdk.json
             git pull origin main
-            npm ci -y
+            npm ci --omit=dev -y
             npm run build
             pm2 reload ecosystem.config.js
