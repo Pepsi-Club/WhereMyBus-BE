@@ -26,5 +26,9 @@ jobs:
           key: ${{secrets.PEM_KEY}}
           port: ${{secrets.PORT}}
           script: |
-            echo "${{secrets.ENV}}" > /home/ubuntu/WhereMyBus-BE/server/.env.prod
-            bash /home/ubuntu/deploy.sh >> /dev/deploy.log 2>&1
+            cd /home/ubuntu/WhereMyBus-BE/server
+            echo "${{secrets.ENV}}" > .env.prod
+            git pull origin main
+            npm ci --omit=dev -y
+            npm run build
+            pm2 reload ecosystem.config.js
