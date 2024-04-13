@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import * as admin from 'firebase-admin';
 import { app } from 'firebase-admin';
 import { MESSAGE } from '../common/message';
-import * as admin from 'firebase-admin';
 
 @Injectable()
 export class FcmService {
   private readonly firebaseApp: app.App;
+  private logger = new Logger(FcmService.name);
+
   constructor() {
     this.firebaseApp = admin.initializeApp({
       credential: admin.credential.applicationDefault(),
@@ -20,6 +22,28 @@ export class FcmService {
         body: message,
       },
     };
-    const sendResult = await this.firebaseApp.messaging().send(payload);
+    this.firebaseApp.messaging().send(payload);
+  }
+
+  async sendWithSubTitle(
+    deviceToken: string,
+    subTitle: string,
+    message: string,
+  ) {
+    const payload = {
+      token: deviceToken,
+      notification: {
+        title: MESSAGE.NOTIFICATION.TITLE,
+        body: message,
+      },
+      data: {
+        subTitle: subTitle,
+      },
+    };
+    try {
+      this.firebaseApp.messaging().send(payload);
+    } catch (e) {
+      this.logger.error(e);
+    }
   }
 }
