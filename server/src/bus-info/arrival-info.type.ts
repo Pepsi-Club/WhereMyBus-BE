@@ -1,4 +1,4 @@
-interface Item {
+export interface Item {
   stId: string;
   stNm: string;
   arsId: string;
