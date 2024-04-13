@@ -9,6 +9,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { Item, ResponseData } from '../bus-info/arrival-info.type';
+import { GetByTokenResponseDto } from './dto/response/getByToken.response.dto';
 
 @Injectable()
 export class RegularAlarmService {
@@ -51,6 +52,11 @@ export class RegularAlarmService {
 
   async getAll(): Promise<RegularAlarm[]> {
     return this.regularAlarmModel.find();
+  }
+
+  async getAlarmByToken(deviceToken: string): Promise<GetByTokenResponseDto[]> {
+    const savedAlarms = await this.regularAlarmModel.find({ deviceToken });
+    return savedAlarms.map((each) => new GetByTokenResponseDto(each));
   }
 
   @Cron(CronExpression.EVERY_MINUTE)

@@ -32,6 +32,11 @@ export class RegularAlarmController {
     return { message: 'delete success' };
   }
 
+  @Get()
+  async getAlarmByToken(@Query('deviceToken') deviceToken: string) {
+    return this.regularAlarmService.getAlarmByToken(deviceToken);
+  }
+
   @Get('get')
   async getAll() {
     return this.regularAlarmService.getAll();
