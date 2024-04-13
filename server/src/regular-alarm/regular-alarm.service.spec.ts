@@ -1,18 +1,19 @@
 import { Test } from '@nestjs/testing';
-import { RegularAlarmService } from '../regular-alarm.service';
-import { RegularAlarm, RegularAlarmSchema } from '../regular-alarm.schema';
+import { RegularAlarmService } from './regular-alarm.service';
+import { RegularAlarm, RegularAlarmSchema } from './regular-alarm.schema';
 import { disconnect, Model } from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { getModelToken, MongooseModule } from '@nestjs/mongoose';
-import { EnrollRequestDto } from '../dto/request/enroll.request.dto';
+import { EnrollRequestDto } from './dto/request/enroll.request.dto';
 import {
   ArgumentMetadata,
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { BusInfoService } from '../../bus-info/bus-info.service';
-import { FcmService } from '../../fcm/fcm.service';
+import { BusInfoService } from '../bus-info/bus-info.service';
+import { FcmService } from '../fcm/fcm.service';
+import { Item } from '../bus-info/arrival-info.type';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -225,5 +226,54 @@ describe('RegularAlarmService', () => {
 
     const result = await service.getAll();
     expect(result.length).toBe(1);
+  });
+
+  it('버스 도착 정보를 올바르게 파싱하여 응답한다.', () => {
+    const normal = '13분9초후[10번째 전]';
+    const normal_result = service.parseMessage(normal);
+    expect(normal_result).toBe('13분 9초후 도착합니다. (10번째 전)');
+
+    const soon = '곧 도착';
+    const soon_result = service.parseMessage(soon);
+    expect(soon_result).toBe('버스가 곧 도착합니다.');
+  });
+
+  it('곧 도착인 버스는 다음 버스의 정보도 제공한다.', () => {
+    const info: Pick<Item, 'arrmsg1' | 'arrmsg2'> = {
+      arrmsg1: '곧 도착',
+      arrmsg2: '13분9초후[10번째 전]',
+    };
+    const result = service.getMessageContent(info);
+    expect(result).toBe(
+      '버스가 곧 도착합니다.\n다음 버스가 13분 9초후 도착합니다. (10번째 전)',
+    );
+  });
+
+  it('처리되지 않은 문자열이 입력되는 경우 받은 문자열을 그대로 출력한다.', () => {
+    const unknown = '알수없음';
+    const result = service.parseMessage(unknown);
+    expect(result).toBe(unknown);
+  });
+
+  it('디바이스 토큰으로 저장된 정보를 조회할 수 있다.', async () => {
+    const dto = new EnrollRequestDto();
+    dto.arsId = '1234';
+    dto.time = '0828';
+    dto.busRouteId = '132412';
+    dto.deviceToken = 'test';
+    dto.day = [1, 2, 3];
+
+    // 3개 저장
+    await service.enrollAlarm(dto);
+    await service.enrollAlarm(dto);
+    await service.enrollAlarm(dto);
+
+    const response = await service.getAlarmByToken(dto.deviceToken);
+    expect(response).toHaveLength(3);
+  });
+
+  it('올바르지 않은 디바이스토큰으로 조회하면 응답 정보를 조회할 수 없다.', async () => {
+    const response = await service.getAlarmByToken('test');
+    expect(response).toHaveLength(0);
   });
 });
