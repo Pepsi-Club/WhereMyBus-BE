@@ -2,6 +2,9 @@ export const MESSAGE = {
   NOTIFICATION: {
     TITLE: '버스어디',
     ERROR: '정규알람 등록 정보가 잘못되었습니다. 재등록해주세요.',
+    SOON: '버스가 곧 도착합니다.',
+    WAITING: '버스가 차고지 대기 중입니다.',
+    END: '버스가 운행이 종료돠었습니다.',
   },
   EXCEPTION: {
     ALARM_INFO_ERROR: '올바르지 않은 알람정보입니다.',

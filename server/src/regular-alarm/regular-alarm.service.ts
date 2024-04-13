@@ -16,11 +16,13 @@ export class RegularAlarmService {
   private readonly apiUrl;
   private logger = new Logger(RegularAlarmService.name);
   private busArrivalMessageRegex = /(\d+)분(\d+)초후\[(\d+)번째 전\]/;
+  private readonly ARRIVE_SOON = '곧 도착';
   private readonly BUS_ARRIVAL_MESSAGE = {
-    '곧 도착': '버스가 곧 도착합니다.',
-    출발대기: '버스가 차고지 대기 중입니다.',
-    운행종료: '버스가 운행이 종료돠었습니다.',
+    ARRIVE_SOON: MESSAGE.NOTIFICATION.SOON,
+    출발대기: MESSAGE.NOTIFICATION.WAITING,
+    운행종료: MESSAGE.NOTIFICATION.END,
   };
+
   constructor(
     @InjectModel(RegularAlarm.name)
     private regularAlarmModel: Model<RegularAlarm>,
@@ -122,7 +124,7 @@ export class RegularAlarmService {
   getMessageContent(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
     const arrmsg1 = busInfo.arrmsg1;
     let message = '';
-    if (arrmsg1 === '곧 도착') {
+    if (arrmsg1 === this.ARRIVE_SOON) {
       message = `${this.parseMessage(busInfo.arrmsg1)}\n${this.parseMessage(
         busInfo.arrmsg2,
         true,

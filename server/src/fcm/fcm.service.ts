@@ -43,6 +43,7 @@ export class FcmService {
     try {
       this.firebaseApp.messaging().send(payload);
     } catch (e) {
+      console.log(e);
       this.logger.error(e);
     }
   }
