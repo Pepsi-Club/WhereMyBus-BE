@@ -1,19 +1,19 @@
 import { Test } from '@nestjs/testing';
-import { RegularAlarmService } from '../regular-alarm.service';
-import { RegularAlarm, RegularAlarmSchema } from '../regular-alarm.schema';
+import { RegularAlarmService } from './regular-alarm.service';
+import { RegularAlarm, RegularAlarmSchema } from './regular-alarm.schema';
 import { disconnect, Model } from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { getModelToken, MongooseModule } from '@nestjs/mongoose';
-import { EnrollRequestDto } from '../dto/request/enroll.request.dto';
+import { EnrollRequestDto } from './dto/request/enroll.request.dto';
 import {
   ArgumentMetadata,
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { BusInfoService } from '../../bus-info/bus-info.service';
-import { FcmService } from '../../fcm/fcm.service';
-import { Item } from '../../bus-info/arrival-info.type';
+import { BusInfoService } from '../bus-info/bus-info.service';
+import { FcmService } from '../fcm/fcm.service';
+import { Item } from '../bus-info/arrival-info.type';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -253,5 +253,27 @@ describe('RegularAlarmService', () => {
     const unknown = '알수없음';
     const result = service.parseMessage(unknown);
     expect(result).toBe(unknown);
+  });
+
+  it('디바이스 토큰으로 저장된 정보를 조회할 수 있다.', async () => {
+    const dto = new EnrollRequestDto();
+    dto.arsId = '1234';
+    dto.time = '0828';
+    dto.busRouteId = '132412';
+    dto.deviceToken = 'test';
+    dto.day = [1, 2, 3];
+
+    // 3개 저장
+    await service.enrollAlarm(dto);
+    await service.enrollAlarm(dto);
+    await service.enrollAlarm(dto);
+
+    const response = await service.getAlarmByToken(dto.deviceToken);
+    expect(response).toHaveLength(3);
+  });
+
+  it('올바르지 않은 디바이스토큰으로 조회하면 응답 정보를 조회할 수 없다.', async () => {
+    const response = await service.getAlarmByToken('test');
+    expect(response).toHaveLength(0);
   });
 });
