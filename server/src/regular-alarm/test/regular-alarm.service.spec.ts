@@ -248,4 +248,10 @@ describe('RegularAlarmService', () => {
       '버스가 곧 도착합니다.\n다음 버스가 13분 9초후 도착합니다. (10번째 전)',
     );
   });
+
+  it('처리되지 않은 문자열이 입력되는 경우 받은 문자열을 그대로 출력한다.', () => {
+    const unknown = '알수없음';
+    const result = service.parseMessage(unknown);
+    expect(result).toBe(unknown);
+  });
 });
