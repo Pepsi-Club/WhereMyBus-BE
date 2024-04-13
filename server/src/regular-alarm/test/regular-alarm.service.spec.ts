@@ -13,6 +13,7 @@ import {
 import { ConfigModule } from '@nestjs/config';
 import { BusInfoService } from '../../bus-info/bus-info.service';
 import { FcmService } from '../../fcm/fcm.service';
+import { Item } from '../../bus-info/arrival-info.type';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -225,5 +226,26 @@ describe('RegularAlarmService', () => {
 
     const result = await service.getAll();
     expect(result.length).toBe(1);
+  });
+
+  it('버스 도착 정보를 올바르게 파싱하여 응답한다.', () => {
+    const normal = '13분9초후[10번째 전]';
+    const normal_result = service.parseMessage(normal);
+    expect(normal_result).toBe('13분 9초후 도착합니다. (10번째 전)');
+
+    const soon = '곧 도착';
+    const soon_result = service.parseMessage(soon);
+    expect(soon_result).toBe('버스가 곧 도착합니다.');
+  });
+
+  it('곧 도착인 버스는 다음 버스의 정보도 제공한다.', () => {
+    const info: Pick<Item, 'arrmsg1' | 'arrmsg2'> = {
+      arrmsg1: '곧 도착',
+      arrmsg2: '13분9초후[10번째 전]',
+    };
+    const result = service.getMessageContent(info);
+    expect(result).toBe(
+      '버스가 곧 도착합니다.\n다음 버스가 13분 9초후 도착합니다. (10번째 전)',
+    );
   });
 });
