@@ -32,12 +32,16 @@ export class FcmService {
   ) {
     const payload = {
       token: deviceToken,
-      notification: {
-        title: MESSAGE.NOTIFICATION.TITLE,
-        body: message,
-      },
-      data: {
-        subTitle: subTitle,
+      apns: {
+        payload: {
+          aps: {
+            alert: {
+              title: MESSAGE.NOTIFICATION.TITLE,
+              body: message,
+              subtitle: subTitle,
+            },
+          },
+        },
       },
     };
     try {
