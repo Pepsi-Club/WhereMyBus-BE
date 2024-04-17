@@ -6,6 +6,7 @@ export class GetByTokenResponseDto {
   day: number[];
   busRoutedId: string;
   arsId: string;
+  adirection: string;
 
   constructor(info: RegularAlarmDocument) {
     this.id = info.id;
@@ -13,5 +14,6 @@ export class GetByTokenResponseDto {
     this.day = info.day;
     this.busRoutedId = info.busRouteId;
     this.arsId = info.arsId;
+    this.adirection = info.adirection;
   }
 }

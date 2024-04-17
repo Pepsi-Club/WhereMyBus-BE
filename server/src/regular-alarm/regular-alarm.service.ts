@@ -79,7 +79,11 @@ export class RegularAlarmService {
     infos.forEach((info) => {
       const busInfo: Item[] = stationArrivalInfoMap
         .get(info.arsId)
-        .msgBody.itemList.filter((each) => each.busRouteId === info.busRouteId);
+        .msgBody.itemList.filter(
+          (each) =>
+            each.busRouteId === info.busRouteId &&
+            (each.adirection === null || each.adirection === info.adirection),
+        );
 
       if (busInfo.length > 0) {
         const subTitle = `[${busInfo[0].busRouteAbrv}] ${busInfo[0].stNm}`;
