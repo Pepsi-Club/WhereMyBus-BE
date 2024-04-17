@@ -21,6 +21,9 @@ export class RegularAlarm {
 
   @Prop()
   arsId: string;
+
+  @Prop()
+  adirection: string;
 }
 
 export const RegularAlarmSchema = SchemaFactory.createForClass(RegularAlarm);
