@@ -82,7 +82,7 @@ export class RegularAlarmService {
         .msgBody.itemList.filter(
           (each) =>
             each.busRouteId === info.busRouteId &&
-            each.adirection === info.adirection,
+            (each.adirection === null || each.adirection === info.adirection),
         );
 
       if (busInfo.length > 0) {
