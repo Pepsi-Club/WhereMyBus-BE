@@ -65,12 +65,17 @@ export class RegularAlarmService {
     const time = this.timeString(now);
     const day = now.getDay();
     this.logger.log(`${time}, ${day} - regularAlarm`);
-    await this.sendNotification(time, day);
+
+    const infos: Array<RegularAlarm> = await this.getEnrolledRegularAlarm(
+      time,
+      day,
+    );
+    this.logger.log(`${infos.length} regular alarm founded`);
+
+    await this.sendNotification(infos);
   }
 
-  async sendNotification(time: string, day: number) {
-    const infos = await this.getEnrolledRegularAlarm(time, day);
-    this.logger.log(`${infos.length} regular alarm founded`);
+  async sendNotification(infos: Array<RegularAlarm>) {
     const stationArrivalInfoMap: Map<string, ResponseData> =
       await this.getStationArrivalInfoMap(infos);
 
@@ -79,15 +84,10 @@ export class RegularAlarmService {
     infos.forEach((info) => {
       const busInfo: Item[] = stationArrivalInfoMap
         .get(info.arsId)
-        .msgBody.itemList.filter(
-          (each) =>
-            each.busRouteId === info.busRouteId &&
-            (each.adirection === null || each.adirection === info.adirection),
-        );
+        .msgBody.itemList.filter(this.isTargetInfo);
 
       if (busInfo.length > 0) {
-        const subTitle = `[${busInfo[0].busRouteAbrv}] ${busInfo[0].stNm}`;
-        const message = this.getMessageContent(busInfo[0]);
+        const { subTitle, message } = this.getMessageContent(busInfo[0]);
 
         try {
           this.fcmService.sendWithSubTitle(info.deviceToken, subTitle, message);
@@ -103,7 +103,10 @@ export class RegularAlarmService {
     await this.regularAlarmModel.deleteMany({ _id: { $in: wrongData } });
   }
 
-  async getEnrolledRegularAlarm(time: string, weekday: number) {
+  async getEnrolledRegularAlarm(
+    time: string,
+    weekday: number,
+  ): Promise<Array<RegularAlarm>> {
     return this.regularAlarmModel.find({
       time: time,
       day: weekday,
@@ -130,7 +133,14 @@ export class RegularAlarmService {
     );
   }
 
-  getMessageContent(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
+  getMessageContent(busInfo) {
+    return {
+      subTitle: `[${busInfo.busRouteAbrv}] ${busInfo.stNm}`,
+      message: this.getMessageBody(busInfo),
+    };
+  }
+
+  getMessageBody(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
     let message = '';
     if (busInfo.arrmsg1 === '곧 도착') {
       message = `${this.parseMessage(busInfo.arrmsg1)}\n${this.parseMessage(
@@ -161,5 +171,12 @@ export class RegularAlarmService {
     if (next) message = '다음 버스가 ' + message;
     if (info.includes('막차')) message = '[막차] ' + message;
     return message ? message : info;
+  }
+
+  isTargetInfo(item: Item): boolean {
+    return (
+      item.busRouteId === item.busRouteId &&
+      (item.adirection === null || item.adirection === item.adirection)
+    );
   }
 }
