@@ -24,7 +24,6 @@ export class RegularAlarmService {
   };
 
   constructor(
-    @InjectModel(RegularAlarm.name)
     private regularAlarmRepository: RegularAlarmRepository,
     private configService: ConfigService,
     private busInfoService: BusInfoService,
