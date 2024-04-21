@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { RegularAlarm } from './regular-alarm.schema';
 import { EnrollRequestDto } from './dto/request/enroll.request.dto';
 import { MESSAGE } from '../common/message';
@@ -10,6 +9,7 @@ import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { Item, ResponseData } from '../bus-info/arrival-info.type';
 import { GetByTokenResponseDto } from './dto/response/getByToken.response.dto';
+import { RegularAlarmRepository } from './regular-alarm.repository';
 
 @Injectable()
 export class RegularAlarmService {
@@ -25,7 +25,7 @@ export class RegularAlarmService {
 
   constructor(
     @InjectModel(RegularAlarm.name)
-    private regularAlarmModel: Model<RegularAlarm>,
+    private regularAlarmRepository: RegularAlarmRepository,
     private configService: ConfigService,
     private busInfoService: BusInfoService,
     private fcmService: FcmService,
@@ -35,27 +35,24 @@ export class RegularAlarmService {
   }
 
   async enrollAlarm(enrollRegularDto: EnrollRequestDto): Promise<RegularAlarm> {
-    const newAlarm = new this.regularAlarmModel(enrollRegularDto);
-    return newAlarm.save();
+    return this.regularAlarmRepository.saveAlarm(enrollRegularDto);
   }
 
   async deleteAlarm(deviceToken: string, alarmId: string) {
-    const findAlarm = await this.regularAlarmModel.findOneAndDelete({
-      _id: alarmId,
-      deviceToken: deviceToken,
-    });
-
+    const findAlarm =
+      await this.regularAlarmRepository.findOneByIdAndTokenAndDelete(
+        deviceToken,
+        alarmId,
+      );
     if (!findAlarm) {
       throw new BadRequestException(MESSAGE.EXCEPTION.ALARM_INFO_ERROR);
     }
   }
 
-  async getAll(): Promise<RegularAlarm[]> {
-    return this.regularAlarmModel.find();
-  }
-
   async getAlarmByToken(deviceToken: string): Promise<GetByTokenResponseDto[]> {
-    const savedAlarms = await this.regularAlarmModel.find({ deviceToken });
+    const savedAlarms = await this.regularAlarmRepository.findByToken(
+      deviceToken,
+    );
     return savedAlarms.map((each) => new GetByTokenResponseDto(each));
   }
 
@@ -66,10 +63,8 @@ export class RegularAlarmService {
     const day = now.getDay();
     this.logger.log(`${time}, ${day} - regularAlarm`);
 
-    const infos: Array<RegularAlarm> = await this.getEnrolledRegularAlarm(
-      time,
-      day,
-    );
+    const infos: Array<RegularAlarm> =
+      await this.regularAlarmRepository.findByTimeAndWeekDay(time, day);
     this.logger.log(`${infos.length} regular alarm founded`);
 
     await this.sendNotification(infos);
@@ -100,17 +95,7 @@ export class RegularAlarmService {
       }
     });
 
-    await this.regularAlarmModel.deleteMany({ _id: { $in: wrongData } });
-  }
-
-  async getEnrolledRegularAlarm(
-    time: string,
-    weekday: number,
-  ): Promise<Array<RegularAlarm>> {
-    return this.regularAlarmModel.find({
-      time: time,
-      day: weekday,
-    });
+    await this.regularAlarmRepository.deleteAllById(wrongData);
   }
 
   async getStationArrivalInfoMap(infos): Promise<Map<string, ResponseData>> {
