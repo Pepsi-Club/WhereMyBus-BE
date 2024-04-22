@@ -14,11 +14,13 @@ import { ConfigModule } from '@nestjs/config';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { Item } from '../bus-info/arrival-info.type';
+import { RegularAlarmRepository } from './regular-alarm.repository';
 
 // TODO mocking, dto 생성 등 리팩토링
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
+  let repository: RegularAlarmRepository;
   let mongoServer: MongoMemoryServer;
   let regularAlarmModel: Model<RegularAlarm>;
   let target: ValidationPipe;
@@ -36,10 +38,16 @@ describe('RegularAlarmService', () => {
           envFilePath: '.env.dev',
         }),
       ],
-      providers: [RegularAlarmService, BusInfoService, FcmService],
+      providers: [
+        RegularAlarmService,
+        BusInfoService,
+        FcmService,
+        RegularAlarmRepository,
+      ],
     }).compile();
 
     service = module.get<RegularAlarmService>(RegularAlarmService);
+    repository = module.get<RegularAlarmRepository>(RegularAlarmRepository);
     regularAlarmModel = module.get<Model<RegularAlarm>>(
       getModelToken(RegularAlarm.name),
     );
@@ -172,7 +180,7 @@ describe('RegularAlarmService', () => {
     await service.enrollAlarm(weekday);
     await service.enrollAlarm(weekend);
 
-    const result = await service.getEnrolledRegularAlarm(
+    const result = await repository.findByTimeAndWeekDay(
       service.timeString(sunday),
       sunday.getDay(),
     );
@@ -203,7 +211,7 @@ describe('RegularAlarmService', () => {
     await service.enrollAlarm(threeTwentyFour);
     await service.enrollAlarm(eight);
 
-    const result = await service.getEnrolledRegularAlarm(
+    const result = await repository.findByTimeAndWeekDay(
       service.timeString(sunday),
       sunday.getDay(),
     );
@@ -256,7 +264,7 @@ describe('RegularAlarmService', () => {
       arrmsg1: '곧 도착',
       arrmsg2: '13분9초후[10번째 전]',
     };
-    const result = service.getMessageContent(info);
+    const result: string = service.getMessageBody(info);
     expect(result).toBe(
       '버스가 곧 도착합니다.\n다음 버스가 13분 9초후 도착합니다. (10번째 전)',
     );
