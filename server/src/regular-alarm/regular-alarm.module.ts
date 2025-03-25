@@ -6,6 +6,7 @@ import { RegularAlarmService } from './regular-alarm.service';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BusInfoModule } from '../bus-info/bus-info.module';
 import { FcmModule } from '../fcm/fcm.module';
+import { RegularAlarmRepository } from './regular-alarm.repository';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { FcmModule } from '../fcm/fcm.module';
     FcmModule,
   ],
   controllers: [RegularAlarmController],
-  providers: [RegularAlarmService],
+  providers: [RegularAlarmService, RegularAlarmRepository],
 })
 export class RegularAlarmModule {}

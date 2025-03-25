@@ -11,8 +11,6 @@ async function bootstrap() {
   app.useLogger(app.get(WinstonLogger));
 
   const port = configService.get<number>('PORT', 3000);
-  await app.listen(port, () => {
-    if (process.env.NODE_ENV == 'prod') process.send('ready');
-  });
+  await app.listen(port);
 }
 bootstrap();

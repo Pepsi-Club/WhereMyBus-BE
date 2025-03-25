@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { RegularAlarm } from './regular-alarm.schema';
 import { EnrollRequestDto } from './dto/request/enroll.request.dto';
 import { MESSAGE } from '../common/message';
@@ -10,6 +9,7 @@ import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { Item, ResponseData } from '../bus-info/arrival-info.type';
 import { GetByTokenResponseDto } from './dto/response/getByToken.response.dto';
+import { RegularAlarmRepository } from './regular-alarm.repository';
 
 @Injectable()
 export class RegularAlarmService {
@@ -24,8 +24,7 @@ export class RegularAlarmService {
   };
 
   constructor(
-    @InjectModel(RegularAlarm.name)
-    private regularAlarmModel: Model<RegularAlarm>,
+    private regularAlarmRepository: RegularAlarmRepository,
     private configService: ConfigService,
     private busInfoService: BusInfoService,
     private fcmService: FcmService,
@@ -35,27 +34,24 @@ export class RegularAlarmService {
   }
 
   async enrollAlarm(enrollRegularDto: EnrollRequestDto): Promise<RegularAlarm> {
-    const newAlarm = new this.regularAlarmModel(enrollRegularDto);
-    return newAlarm.save();
+    return this.regularAlarmRepository.saveAlarm(enrollRegularDto);
   }
 
   async deleteAlarm(deviceToken: string, alarmId: string) {
-    const findAlarm = await this.regularAlarmModel.findOneAndDelete({
-      _id: alarmId,
-      deviceToken: deviceToken,
-    });
-
+    const findAlarm =
+      await this.regularAlarmRepository.findOneByIdAndTokenAndDelete(
+        deviceToken,
+        alarmId,
+      );
     if (!findAlarm) {
       throw new BadRequestException(MESSAGE.EXCEPTION.ALARM_INFO_ERROR);
     }
   }
 
-  async getAll(): Promise<RegularAlarm[]> {
-    return this.regularAlarmModel.find();
-  }
-
   async getAlarmByToken(deviceToken: string): Promise<GetByTokenResponseDto[]> {
-    const savedAlarms = await this.regularAlarmModel.find({ deviceToken });
+    const savedAlarms = await this.regularAlarmRepository.findByToken(
+      deviceToken,
+    );
     return savedAlarms.map((each) => new GetByTokenResponseDto(each));
   }
 
@@ -65,12 +61,15 @@ export class RegularAlarmService {
     const time = this.timeString(now);
     const day = now.getDay();
     this.logger.log(`${time}, ${day} - regularAlarm`);
-    await this.sendNotification(time, day);
+
+    const infos: Array<RegularAlarm> =
+      await this.regularAlarmRepository.findByTimeAndWeekDay(time, day);
+    this.logger.log(`${infos.length} regular alarm founded`);
+
+    await this.sendNotification(infos);
   }
 
-  async sendNotification(time: string, day: number) {
-    const infos = await this.getEnrolledRegularAlarm(time, day);
-    this.logger.log(`${infos.length} regular alarm founded`);
+  async sendNotification(infos: Array<RegularAlarm>) {
     const stationArrivalInfoMap: Map<string, ResponseData> =
       await this.getStationArrivalInfoMap(infos);
 
@@ -79,15 +78,10 @@ export class RegularAlarmService {
     infos.forEach((info) => {
       const busInfo: Item[] = stationArrivalInfoMap
         .get(info.arsId)
-        .msgBody.itemList.filter(
-          (each) =>
-            each.busRouteId === info.busRouteId &&
-            (each.adirection === null || each.adirection === info.adirection),
-        );
+        .msgBody.itemList.filter(this.isTargetInfo);
 
       if (busInfo.length > 0) {
-        const subTitle = `[${busInfo[0].busRouteAbrv}] ${busInfo[0].stNm}`;
-        const message = this.getMessageContent(busInfo[0]);
+        const { subTitle, message } = this.getMessageContent(busInfo[0]);
 
         try {
           this.fcmService.sendWithSubTitle(info.deviceToken, subTitle, message);
@@ -100,14 +94,7 @@ export class RegularAlarmService {
       }
     });
 
-    await this.regularAlarmModel.deleteMany({ _id: { $in: wrongData } });
-  }
-
-  async getEnrolledRegularAlarm(time: string, weekday: number) {
-    return this.regularAlarmModel.find({
-      time: time,
-      day: weekday,
-    });
+    await this.regularAlarmRepository.deleteAllById(wrongData);
   }
 
   async getStationArrivalInfoMap(infos): Promise<Map<string, ResponseData>> {
@@ -130,7 +117,14 @@ export class RegularAlarmService {
     );
   }
 
-  getMessageContent(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
+  getMessageContent(busInfo) {
+    return {
+      subTitle: `[${busInfo.busRouteAbrv}] ${busInfo.stNm}`,
+      message: this.getMessageBody(busInfo),
+    };
+  }
+
+  getMessageBody(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
     let message = '';
     if (busInfo.arrmsg1 === '곧 도착') {
       message = `${this.parseMessage(busInfo.arrmsg1)}\n${this.parseMessage(
@@ -161,5 +155,12 @@ export class RegularAlarmService {
     if (next) message = '다음 버스가 ' + message;
     if (info.includes('막차')) message = '[막차] ' + message;
     return message ? message : info;
+  }
+
+  isTargetInfo(item: Item): boolean {
+    return (
+      item.busRouteId === item.busRouteId &&
+      (item.adirection === null || item.adirection === item.adirection)
+    );
   }
 }
