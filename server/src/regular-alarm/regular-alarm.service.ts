@@ -78,7 +78,11 @@ export class RegularAlarmService {
     infos.forEach((info) => {
       const busInfo: Item[] = stationArrivalInfoMap
         .get(info.arsId)
-        .msgBody.itemList.filter(this.isTargetInfo);
+        .msgBody.itemList.filter(
+          (item) =>
+            item.busRouteId === info.busRouteId &&
+            (item.adirection === null || item.adirection === info.adirection),
+        );
 
       if (busInfo.length > 0) {
         const { subTitle, message } = this.getMessageContent(busInfo[0]);
@@ -155,12 +159,5 @@ export class RegularAlarmService {
     if (next) message = '다음 버스가 ' + message;
     if (info.includes('막차')) message = '[막차] ' + message;
     return message ? message : info;
-  }
-
-  isTargetInfo(item: Item): boolean {
-    return (
-      item.busRouteId === item.busRouteId &&
-      (item.adirection === null || item.adirection === item.adirection)
-    );
   }
 }
