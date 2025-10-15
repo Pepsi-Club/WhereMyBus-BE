@@ -11,16 +11,22 @@ import { Item, ResponseData } from '../bus-info/arrival-info.type';
 import { GetByTokenResponseDto } from './dto/response/getByToken.response.dto';
 import { RegularAlarmRepository } from './regular-alarm.repository';
 
+enum BusArrivalStatus {
+  SOON = '곧 도착',
+  WAITING = '출발대기',
+  END = '운행종료',
+}
+
 @Injectable()
 export class RegularAlarmService {
   private readonly serviceKey;
   private readonly apiUrl;
   private logger = new Logger(RegularAlarmService.name);
-  private busArrivalMessageRegex = /(\d+)분(\d+)초후\[(\d+)번째 전\]/;
+  private busArrivalMessageRegex = /(\d+)\s*분(?:후)?(?:.*?(\d+)번째 전)?/;
   private readonly BUS_ARRIVAL_MESSAGE = {
-    '곧 도착': MESSAGE.NOTIFICATION.SOON,
-    출발대기: MESSAGE.NOTIFICATION.WAITING,
-    운행종료: MESSAGE.NOTIFICATION.END,
+    [BusArrivalStatus.SOON]: MESSAGE.NOTIFICATION.SOON,
+    [BusArrivalStatus.WAITING]: MESSAGE.NOTIFICATION.WAITING,
+    [BusArrivalStatus.END]: MESSAGE.NOTIFICATION.END,
   };
 
   constructor(
@@ -130,18 +136,16 @@ export class RegularAlarmService {
 
   getMessageBody(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
     let message = '';
-    if (busInfo.arrmsg1 === '곧 도착') {
-      message = `${this.parseMessage(busInfo.arrmsg1)}\n${this.parseMessage(
-        busInfo.arrmsg2,
-        true,
-      )}`;
-    } else {
-      message = this.parseMessage(busInfo.arrmsg1);
+    const firstMessage = this.parseMessage(busInfo.arrmsg1);
+    message = `${firstMessage}`;
+    if (busInfo.arrmsg1 === BusArrivalStatus.SOON) {
+      const secondMessage = this.parseMessage(busInfo.arrmsg2, true);
+      message += `\n${secondMessage}`;
     }
     return message;
   }
 
-  parseMessage(info: string, next = false) {
+  private parseMessage(info: string, next = false) {
     let message = this.BUS_ARRIVAL_MESSAGE[info];
     if (message) {
       if (next) return '다음 ' + message;
@@ -151,9 +155,13 @@ export class RegularAlarmService {
     const match = info.match(this.busArrivalMessageRegex);
     if (match) {
       const minutes = match[1];
-      const seconds = match[2];
-      const count = match[3];
-      message = `${minutes}분 ${seconds}초후 도착합니다. (${count}번째 전)`;
+      const count = match[2];
+
+      if (count) {
+        message = `${minutes}분 후 도착합니다. (${count}번째 전)`;
+      } else {
+        message = `${minutes}분 후 도착합니다.`;
+      }
     }
 
     if (next) message = '다음 버스가 ' + message;
