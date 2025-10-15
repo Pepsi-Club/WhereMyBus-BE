@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
 import { RegularAlarm } from './regular-alarm.schema';
 import { EnrollRequestDto } from './dto/request/enroll.request.dto';
 import { MESSAGE } from '../common/message';
@@ -10,24 +9,13 @@ import { FcmService } from '../fcm/fcm.service';
 import { Item, ResponseData } from '../bus-info/arrival-info.type';
 import { GetByTokenResponseDto } from './dto/response/getByToken.response.dto';
 import { RegularAlarmRepository } from './regular-alarm.repository';
-
-enum BusArrivalStatus {
-  SOON = '곧 도착',
-  WAITING = '출발대기',
-  END = '운행종료',
-}
-
+import { MessageUtil } from './MessageUtil';
 @Injectable()
 export class RegularAlarmService {
   private readonly serviceKey;
   private readonly apiUrl;
   private logger = new Logger(RegularAlarmService.name);
   private busArrivalMessageRegex = /(\d+)\s*분(?:후)?(?:.*?(\d+)번째 전)?/;
-  private readonly BUS_ARRIVAL_MESSAGE = {
-    [BusArrivalStatus.SOON]: MESSAGE.NOTIFICATION.SOON,
-    [BusArrivalStatus.WAITING]: MESSAGE.NOTIFICATION.WAITING,
-    [BusArrivalStatus.END]: MESSAGE.NOTIFICATION.END,
-  };
 
   constructor(
     private regularAlarmRepository: RegularAlarmRepository,
@@ -89,9 +77,8 @@ export class RegularAlarmService {
             item.busRouteId === info.busRouteId &&
             (item.adirection === null || item.adirection === info.adirection),
         );
-
       if (busInfo.length > 0) {
-        const { subTitle, message } = this.getMessageContent(busInfo[0]);
+        const { subTitle, message } = MessageUtil.getMessageContent(busInfo[0]);
 
         try {
           this.fcmService.sendWithSubTitle(info.deviceToken, subTitle, message);
@@ -125,47 +112,5 @@ export class RegularAlarmService {
       String(now.getHours()).padStart(2, '0') +
       String(now.getMinutes()).padStart(2, '0')
     );
-  }
-
-  getMessageContent(busInfo) {
-    return {
-      subTitle: `[${busInfo.busRouteAbrv}] ${busInfo.stNm}`,
-      message: this.getMessageBody(busInfo),
-    };
-  }
-
-  getMessageBody(busInfo: Pick<Item, 'arrmsg1' | 'arrmsg2'>): string {
-    let message = '';
-    const firstMessage = this.parseMessage(busInfo.arrmsg1);
-    message = `${firstMessage}`;
-    if (busInfo.arrmsg1 === BusArrivalStatus.SOON) {
-      const secondMessage = this.parseMessage(busInfo.arrmsg2, true);
-      message += `\n${secondMessage}`;
-    }
-    return message;
-  }
-
-  private parseMessage(info: string, next = false) {
-    let message = this.BUS_ARRIVAL_MESSAGE[info];
-    if (message) {
-      if (next) return '다음 ' + message;
-      return message;
-    }
-
-    const match = info.match(this.busArrivalMessageRegex);
-    if (match) {
-      const minutes = match[1];
-      const count = match[2];
-
-      if (count) {
-        message = `${minutes}분 후 도착합니다. (${count}번째 전)`;
-      } else {
-        message = `${minutes}분 후 도착합니다.`;
-      }
-    }
-
-    if (next) message = '다음 버스가 ' + message;
-    if (info.includes('막차')) message = '[막차] ' + message;
-    return message ? message : info;
   }
 }
