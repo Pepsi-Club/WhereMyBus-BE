@@ -194,6 +194,7 @@ interface MinuteBucket {
 ### 환경변수
 
 ```text
+HOST=127.0.0.1
 DASHBOARD_ENABLED=true
 DASHBOARD_ACCESS_CODE=<충분히 긴 개발자 코드>
 DASHBOARD_SESSION_SECRET=<별도 무작위 서명 키>
@@ -204,6 +205,10 @@ BUS_API_METRIC_RETENTION_DAYS=400
 ```
 
 `DASHBOARD_ACCESS_CODE`와 `DASHBOARD_SESSION_SECRET`는 서로 다른 값이어야 한다. 저장소와 static frontend에 포함하지 않는다.
+
+- access code는 최소 12자
+- session secret은 최소 32자
+- 운영 backend host는 `127.0.0.1`; Nginx만 loopback으로 접근
 
 ### 인증 흐름
 
@@ -423,3 +428,22 @@ NestJS는 loopback proxy만 신뢰하고 외부에서 직접 접근할 수 없�
 - 비정상 종료 시 현재 1분 metric 유실 가능
 
 호출량 확인이 핵심인 현재 요구에는 이 제약을 수용한다.
+
+## 20. 구현 상태
+
+2026-09-30 기준 feature branch 구현 범위:
+
+- `src/bus-api-metric/`: minute bucket 저장, sparse flush, retry queue, 조회 aggregation, session 인증, Guard, Dashboard API
+- `src/bus-info/bus-info.service.ts`: 실제 Axios 요청 경계 계측
+- `dashboard/`: 외부 의존 없는 static Dashboard
+- `src/main.ts`: loopback 기본 bind, loopback proxy trust, shutdown hook
+- unit/E2E: 저장·계측·인증·timezone·API·frontend helper·bootstrap 검증
+
+운영 미적용 범위:
+
+- OCI instance에 실제 환경변수 입력
+- PM2 reload
+- Nginx location 추가와 reload
+- 운영 HTTPS에서 cookie, sparse write, 기간별 합계 확인
+
+적용 절차는 `docs/operations/dashboard-nginx-deployment.md`를 따른다.

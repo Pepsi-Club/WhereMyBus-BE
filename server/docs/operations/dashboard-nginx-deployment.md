@@ -1,5 +1,7 @@
 # 자체 Dashboard Nginx 배포 가이드
 
+> 이 저장소 변경은 Dashboard 코드와 설정 예시만 제공한다. OCI instance의 환경변수, PM2, Nginx 설정은 자동으로 변경되지 않으며 아래 순서로 운영 서버에 직접 적용해야 한다.
+
 ## 1. 운영 경로
 
 ```text
@@ -113,6 +115,7 @@ Nginx만 backend에 접근해야 `X-Forwarded-For`를 신뢰할 수 있다. Nest
 ## 6. 애플리케이션 환경변수
 
 ```text
+HOST=127.0.0.1
 DASHBOARD_ENABLED=true
 DASHBOARD_ACCESS_CODE=<충분히 긴 개발자 코드>
 DASHBOARD_SESSION_SECRET=<별도 무작위 서명 키>
@@ -124,13 +127,34 @@ BUS_API_METRIC_RETENTION_DAYS=400
 
 요건:
 
+- `HOST=127.0.0.1`로 NestJS가 Nginx loopback 요청만 받게 설정
+- access code 최소 12자, session secret 최소 32자
 - access code와 session secret은 서로 다른 값
 - `.env`와 PM2 환경설정 파일 권한 제한
 - Git 커밋 금지
 - shell history에 실제 secret 노출 주의
 - 변경 후 PM2 reload 필요
 
-## 7. 적용 전 검증
+## 7. Backend build와 PM2 적용
+
+운영 서버에서 새 커밋을 받은 뒤 실행한다.
+
+```bash
+cd /home/ubuntu/WhereMyBus-BE/server
+npm ci
+npm run build
+pm2 reload 0 --update-env
+pm2 ls
+```
+
+확인 항목:
+
+- PM2 ID `0` 상태가 `online`
+- application log에 MongoDB 연결 또는 provider 초기화 오류 없음
+- `ss -lntp`에서 NestJS가 `127.0.0.1:<PORT>`에만 bind
+- 외부에서 `<PUBLIC_IP>:3000` 접근 불가
+
+## 8. Nginx 적용 전 검증
 
 ```bash
 sudo nginx -t
@@ -144,7 +168,7 @@ sudo systemctl reload nginx
 
 Nginx reload는 기존 연결을 유지하면서 설정을 교체한다. `nginx -t` 실패 시 reload하지 않는다.
 
-## 8. Static 응답 검증
+## 9. Static 응답 검증
 
 ```bash
 curl -I https://<DOMAIN>/dashboard
@@ -160,7 +184,7 @@ curl -I https://<DOMAIN>/dashboard/dashboard.js
 
 403이면 directory traverse/read 권한을 확인한다. 404이면 `root`와 실제 파일 경로를 확인한다.
 
-## 9. API proxy 검증
+## 10. API proxy 검증
 
 ```bash
 curl -i https://<DOMAIN>/api/dashboard/session
@@ -173,7 +197,7 @@ Nginx access log와 NestJS HTTP log에서 경로가 `/api/dashboard/...`로 유�
 
 Backend에 `/session`이나 `/metrics`만 전달되면 `proxy_pass` trailing slash 설정을 확인한다.
 
-## 10. 인증 검증
+## 11. 인증 검증
 
 실제 코드를 command history에 남기지 않도록 브라우저에서 우선 검증한다.
 
@@ -187,7 +211,7 @@ Backend에 `/session`이나 `/metrics`만 전달되면 `proxy_pass` trailing sla
 - logout 후 metric API가 401 반환
 - 실패 5회 초과 시 429 반환
 
-## 11. Dashboard 데이터 검증
+## 12. Dashboard 데이터 검증
 
 1. 버스 API 호출이 없는 분 확인
 2. MongoDB에 해당 분 metric 문서가 생기지 않았는지 확인
@@ -197,7 +221,7 @@ Backend에 `/session`이나 `/metrics`만 전달되면 `proxy_pass` trailing sla
 6. 오류 요청 후 error count 확인
 7. UTC 경계와 `Asia/Seoul` 일자 집계 확인
 
-## 12. 캐시 정책
+## 13. 캐시 정책
 
 `index.html`은 새 배포를 바로 반영하도록 짧은 캐시 또는 no-cache를 권장한다. fingerprint 없는 JS/CSS도 초기에는 no-cache로 단순 운영한다.
 
@@ -210,9 +234,10 @@ location = /dashboard/index.html {
 
 별도 exact location을 사용할 경우 `/dashboard/`의 fallback과 충돌하지 않는지 `nginx -T`로 최종 설정을 확인한다.
 
-## 13. 보안 체크리스트
+## 14. 보안 체크리스트
 
 - [ ] Dashboard는 HTTPS만 사용
+- [ ] `HOST=127.0.0.1` 적용
 - [ ] access code가 static 파일에 없음
 - [ ] access code와 session secret이 다름
 - [ ] backend 3000 포트 외부 차단
@@ -225,7 +250,7 @@ location = /dashboard/index.html {
 - [ ] 로그에 code, cookie, token, service key 없음
 - [ ] Nginx worker는 dashboard 파일 읽기 권한만 가짐
 
-## 14. 장애 확인
+## 15. 장애 확인
 
 ### Dashboard가 404
 
@@ -259,7 +284,7 @@ location = /dashboard/index.html {
 - session secret이 worker마다 동일한지 확인
 - Nginx가 `X-Forwarded-Proto https`를 전달하는지 확인
 
-## 15. 롤백
+## 16. 롤백
 
 1. `DASHBOARD_ENABLED=false`로 변경
 2. PM2 reload
