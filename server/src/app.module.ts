@@ -10,6 +10,7 @@ import { FcmModule } from './fcm/fcm.module';
 import { BusInfoModule } from './bus-info/bus-info.module';
 import { LoggerMiddleware } from './config/logger/logger.middleware';
 import { WinstonLogger } from './config/logger/winstonLogger.service';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { WinstonLogger } from './config/logger/winstonLogger.service';
     MongooseModule.forRootAsync({
       useClass: MongooseConfigService,
     }),
+    ScheduleModule.forRoot(),
     RegularAlarmModule,
     FcmModule,
     BusInfoModule,

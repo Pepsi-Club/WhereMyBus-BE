@@ -14,6 +14,7 @@ import { ConfigModule } from '@nestjs/config';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { RegularAlarmRepository } from './regular-alarm.repository';
+import { BusApiMetricService } from '../bus-api-metric/bus-api-metric.service';
 
 // TODO mocking, dto 생성 등 리팩토링
 
@@ -42,6 +43,13 @@ describe('RegularAlarmService', () => {
         BusInfoService,
         FcmService,
         RegularAlarmRepository,
+        {
+          provide: BusApiMetricService,
+          useValue: {
+            recordRequest: () => undefined,
+            recordError: () => undefined,
+          },
+        },
       ],
     }).compile();
 

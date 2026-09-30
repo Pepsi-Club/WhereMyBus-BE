@@ -2,12 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { ResponseData } from './arrival-info.type';
+import { BusApiMetricService } from '../bus-api-metric/bus-api-metric.service';
 
 @Injectable()
 export class BusInfoService {
   private readonly serviceKey;
   private readonly apiUrl;
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly metricRecorder: BusApiMetricService,
+  ) {
     this.serviceKey = this.configService.get<string>('SERVICE_KEY');
     this.apiUrl = this.configService.get<string>('BUS_INFO_API');
   }
@@ -23,7 +27,14 @@ export class BusInfoService {
   }
 
   async arriveStation(arsId: string): Promise<ResponseData> {
+    const startedAt = new Date();
+    this.metricRecorder.recordRequest(startedAt);
     const requestUrl = `${this.apiUrl}?ServiceKey=${this.serviceKey}&arsId=${arsId}&resultType=json`;
-    return (await axios.get(requestUrl)).data;
+    try {
+      return (await axios.get(requestUrl)).data;
+    } catch (error) {
+      this.metricRecorder.recordError(startedAt);
+      throw error;
+    }
   }
 }
