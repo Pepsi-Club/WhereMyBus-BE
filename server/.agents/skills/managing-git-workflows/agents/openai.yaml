@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git 워크플로 관리"
+  short_description: "안전한 브랜치, 커밋, 병합, 푸시 작업 관리"
+  default_prompt: "Use $managing-git-workflows to review my changes, create a suitable branch and commit, then push when authorized."
