@@ -155,7 +155,8 @@ query:  { bucketStart: 1 }
 정책:
 
 - `bucketStart`는 UTC 분 시작 시각
-- `instanceId`는 `NODE_APP_INSTANCE`, 없으면 `standalone`
+- `instanceId`는 `<NODE_APP_INSTANCE 또는 standalone>:<PID>:<process UUID>`
+- 같은 PM2 worker가 같은 분에 재시작해도 process UUID가 달라 이전 count를 덮어쓰지 않음
 - 기본 보존 기간 400일
 - 요청 0건이면 문서 생성 안 함
 - 서버의 일별·월별 aggregation은 `Asia/Seoul` 기준
@@ -173,12 +174,13 @@ interface MinuteBucket {
 처리 순서:
 
 1. 요청마다 현재 메모리 버킷 counter 증가
-2. 분 경계에서 현재 버킷을 새 버킷과 교체
-3. 완료 버킷의 request count가 0이면 저장 생략
+2. 분 경계에서 완료 버킷의 현재 누적값을 snapshot
+3. request count가 0이거나 마지막 저장값과 같으면 저장 생략
 4. `(bucketStart, instanceId)` 기준 `$set + upsert`
-5. write 실패 시 제한된 pending queue에 보관 후 다음 flush에서 재시도
+5. write 중 추가된 지연 오류는 메모리 누적값에 남겨 다음 flush에서 다시 snapshot
+6. write 실패 시 제한된 pending queue에 보관 후 다음 flush에서 재시도
 
-`$set`을 사용하는 이유는 같은 worker가 같은 버킷을 재시도할 때 `$inc` 중복을 막기 위해서다. 향후 PM2 worker가 늘어나도 `instanceId`별 문서를 만들고 조회 시 합산하므로 서로 덮어쓰지 않는다.
+`$set`을 사용하는 이유는 같은 process가 같은 버킷을 재시도할 때 `$inc` 중복을 막기 위해서다. process lifetime마다 고유한 `instanceId` 문서를 만들고 조회 시 합산하므로 PM2 worker 확장과 같은 분 재시작 모두 서로 덮어쓰지 않는다.
 
 권장 pending 정책:
 
@@ -346,7 +348,7 @@ NestJS는 loopback proxy만 신뢰하고 외부에서 직접 접근할 수 없�
 
 향후 worker를 늘리면:
 
-- worker별 `instanceId` 문서를 저장해 metric overwrite 방지
+- worker process generation별 `instanceId` 문서를 저장해 metric overwrite 방지
 - 모든 worker에서 `@Cron`이 실행되는 문제는 별도로 단일 scheduler 또는 분산 락으로 해결
 - 로그인 rate limiter는 공용 저장소로 이동
 
@@ -368,6 +370,9 @@ NestJS는 loopback proxy만 신뢰하고 외부에서 직접 접근할 수 없�
 - `$set + upsert` 재시도 시 중복 없음
 - write 실패가 버스 조회에 전파되지 않음
 - shutdown 시 잔여 버킷 flush
+- flush 중 발생한 지연 오류를 다음 flush에서 누적 저장
+- 진행 중인 flush와 shutdown이 겹치면 기존 flush 완료 후 현재 버킷까지 저장
+- 같은 worker가 같은 분에 재시작해도 process generation별 count 합계 유지
 - retention 날짜와 index 검증
 
 ### 인증

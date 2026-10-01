@@ -1,11 +1,14 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { randomUUID } from 'crypto';
 import { BusApiMetricRepository } from './bus-api-metric.repository';
 
 type MutableBucket = {
   requestCount: number;
   errorCount: number;
+  flushedRequestCount: number;
+  flushedErrorCount: number;
 };
 
 const MINUTE_MS = 60_000;
@@ -19,14 +22,15 @@ export class BusApiMetricService implements OnApplicationShutdown {
   private readonly buckets = new Map<number, MutableBucket>();
   private readonly instanceId: string;
   private readonly retentionDays: number;
-  private flushRunning = false;
+  private flushQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly repository: BusApiMetricRepository,
     configService: ConfigService,
   ) {
-    this.instanceId =
+    const workerId =
       configService.get<string>('NODE_APP_INSTANCE') ?? 'standalone';
+    this.instanceId = `${workerId}:${process.pid}:${randomUUID()}`;
     const retentionDays = Number(
       configService.get<string>(
         'BUS_API_METRIC_RETENTION_DAYS',
@@ -59,18 +63,23 @@ export class BusApiMetricService implements OnApplicationShutdown {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async flushCompletedBuckets(now = new Date()): Promise<void> {
-    await this.flushBefore(this.minuteStart(now));
+    await this.enqueueFlush(this.minuteStart(now));
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await this.flushBefore(Number.POSITIVE_INFINITY);
+    await this.enqueueFlush(Number.POSITIVE_INFINITY);
   }
 
   private bucketFor(at: Date): MutableBucket {
     const key = this.minuteStart(at);
     let bucket = this.buckets.get(key);
     if (!bucket) {
-      bucket = { requestCount: 0, errorCount: 0 };
+      bucket = {
+        requestCount: 0,
+        errorCount: 0,
+        flushedRequestCount: 0,
+        flushedErrorCount: 0,
+      };
       this.buckets.set(key, bucket);
     }
     return bucket;
@@ -95,46 +104,48 @@ export class BusApiMetricService implements OnApplicationShutdown {
     }
   }
 
+  private enqueueFlush(cutoff: number): Promise<void> {
+    const flush = this.flushQueue.then(() => this.flushBefore(cutoff));
+    this.flushQueue = flush.catch(() => undefined);
+    return flush;
+  }
+
   private async flushBefore(cutoff: number): Promise<void> {
-    if (this.flushRunning) {
-      return;
-    }
+    const keys = [...this.buckets.keys()]
+      .filter((key) => key < cutoff)
+      .sort((left, right) => left - right);
 
-    this.flushRunning = true;
-    try {
-      const keys = [...this.buckets.keys()]
-        .filter((key) => key < cutoff)
-        .sort((left, right) => left - right);
-
-      for (const key of keys) {
-        const bucket = this.buckets.get(key);
-        if (!bucket) {
-          continue;
-        }
-        if (bucket.requestCount === 0) {
-          this.buckets.delete(key);
-          continue;
-        }
-
-        try {
-          await this.repository.upsertBucket({
-            bucketStart: new Date(key),
-            instanceId: this.instanceId,
-            requestCount: bucket.requestCount,
-            errorCount: bucket.errorCount,
-            expiresAt: new Date(key + this.retentionDays * DAY_MS),
-          });
-          this.buckets.delete(key);
-        } catch (error) {
-          this.logger.error(
-            `Failed to flush bus API metric bucket: ${new Date(
-              key,
-            ).toISOString()}`,
-          );
-        }
+    for (const key of keys) {
+      const bucket = this.buckets.get(key);
+      if (!bucket || bucket.requestCount === 0) {
+        continue;
       }
-    } finally {
-      this.flushRunning = false;
+      if (
+        bucket.requestCount === bucket.flushedRequestCount &&
+        bucket.errorCount === bucket.flushedErrorCount
+      ) {
+        continue;
+      }
+
+      const requestCount = bucket.requestCount;
+      const errorCount = bucket.errorCount;
+      try {
+        await this.repository.upsertBucket({
+          bucketStart: new Date(key),
+          instanceId: this.instanceId,
+          requestCount,
+          errorCount,
+          expiresAt: new Date(key + this.retentionDays * DAY_MS),
+        });
+        bucket.flushedRequestCount = requestCount;
+        bucket.flushedErrorCount = errorCount;
+      } catch (error) {
+        this.logger.error(
+          `Failed to flush bus API metric bucket: ${new Date(
+            key,
+          ).toISOString()}`,
+        );
+      }
     }
   }
 }

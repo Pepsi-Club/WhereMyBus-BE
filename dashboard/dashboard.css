@@ -247,6 +247,12 @@ button.secondary:hover {
   stroke-width: 3;
 }
 
+.request-point {
+  fill: #fff;
+  stroke: #305cff;
+  stroke-width: 3;
+}
+
 #request-chart text {
   fill: #78869a;
   font-size: 16px;

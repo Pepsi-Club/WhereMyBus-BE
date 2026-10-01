@@ -24,23 +24,52 @@
   }
 
   function buildLinePath(series, width, height) {
+    return buildChartPoints(series, width, height)
+      .map(function (point, index) {
+        return `${
+          index === 0 ? "M" : "L"
+        } ${formatCoordinate(point.x)} ${formatCoordinate(point.y)}`;
+      })
+      .join(" ");
+  }
+
+  function buildChartPoints(series, width, height) {
     if (!Array.isArray(series) || series.length === 0) {
-      return "";
+      return [];
     }
     const counts = series.map(function (point) {
       return safeNumber(point.requestCount);
     });
+    const timestamps = series.map(function (point) {
+      return Date.parse(point.start);
+    });
+    const hasValidTimestamps = timestamps.every(Number.isFinite);
+    const firstTimestamp = hasValidTimestamps
+      ? Math.min.apply(null, timestamps)
+      : 0;
+    const lastTimestamp = hasValidTimestamps
+      ? Math.max.apply(null, timestamps)
+      : 0;
     const max = Math.max.apply(null, counts);
-    return counts
-      .map(function (count, index) {
-        const x =
-          counts.length === 1 ? 0 : (index / (counts.length - 1)) * width;
-        const y = max === 0 ? height : height - (count / max) * height;
-        return `${
-          index === 0 ? "M" : "L"
-        } ${formatCoordinate(x)} ${formatCoordinate(y)}`;
-      })
-      .join(" ");
+
+    return series.map(function (point, index) {
+      let x = width / 2;
+      if (series.length > 1) {
+        x =
+          hasValidTimestamps && lastTimestamp > firstTimestamp
+            ? ((timestamps[index] - firstTimestamp) /
+                (lastTimestamp - firstTimestamp)) *
+              width
+            : (index / (series.length - 1)) * width;
+      }
+      const count = counts[index];
+      return {
+        x: x,
+        y: max === 0 ? height : height - (count / max) * height,
+        start: typeof point.start === "string" ? point.start : "",
+        requestCount: count,
+      };
+    });
   }
 
   function formatCoordinate(value) {
@@ -87,6 +116,7 @@
     const logoutButton = document.getElementById("logout-button");
     const statusMessage = document.getElementById("status-message");
     const refreshButton = document.getElementById("refresh-button");
+    let metricRequestGeneration = 0;
 
     function setStatus(message, isError) {
       statusMessage.textContent = message || "";
@@ -94,6 +124,7 @@
     }
 
     function showLogin(message) {
+      metricRequestGeneration += 1;
       loginView.hidden = false;
       dashboardView.hidden = true;
       setStatus(message || "", Boolean(message));
@@ -172,18 +203,43 @@
       path.setAttribute("class", "request-line");
       path.setAttribute("vector-effect", "non-scaling-stroke");
       svg.appendChild(path);
+
+      const points = buildChartPoints(series, width, height);
+      points.forEach(function (point) {
+        const marker = document.createElementNS(SVG_NS, "circle");
+        marker.setAttribute("cx", formatCoordinate(point.x));
+        marker.setAttribute("cy", formatCoordinate(point.y));
+        marker.setAttribute("r", "4");
+        marker.setAttribute("class", "request-point");
+        const title = document.createElementNS(SVG_NS, "title");
+        title.textContent = `${point.start || "시각 정보 없음"}: ${formatCount(
+          point.requestCount
+        )}건`;
+        marker.appendChild(title);
+        svg.appendChild(marker);
+      });
       svg.setAttribute(
         "aria-label",
-        `선택 기간 요청 추이, ${series.length}개 구간`
+        `선택 기간 요청 추이: ${points
+          .map(function (point) {
+            return `${
+              point.start || "시각 정보 없음"
+            } ${formatCount(point.requestCount)}건`;
+          })
+          .join(", ")}`
       );
     }
 
     async function loadMetrics() {
+      const generation = ++metricRequestGeneration;
       setStatus("통계를 불러오는 중입니다.", false);
       try {
         const response = await apiFetch(
           `/metrics?range=${encodeURIComponent(rangeSelect.value)}`
         );
+        if (generation !== metricRequestGeneration) {
+          return;
+        }
         if (response.status === 401) {
           showLogin("세션이 만료되었습니다. 다시 로그인하세요.");
           return;
@@ -191,10 +247,19 @@
         if (!response.ok) {
           throw new Error("metric request failed");
         }
-        renderMetrics(await response.json());
+        const payload = await response.json();
+        if (generation !== metricRequestGeneration) {
+          return;
+        }
+        renderMetrics(payload);
         setStatus("", false);
       } catch (error) {
-        setStatus("통계를 불러오지 못했습니다. 잠시 후 다시 시도하세요.", true);
+        if (generation === metricRequestGeneration) {
+          setStatus(
+            "통계를 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+            true
+          );
+        }
       }
     }
 
@@ -242,10 +307,16 @@
     rangeSelect.addEventListener("change", loadMetrics);
     refreshButton.addEventListener("click", loadMetrics);
     logoutButton.addEventListener("click", async function () {
+      setStatus("로그아웃 중입니다.", false);
       try {
-        await apiFetch("/logout", { method: "POST" });
-      } finally {
-        showLogin("로그아웃했습니다.");
+        const response = await apiFetch("/logout", { method: "POST" });
+        if (!response.ok) {
+          throw new Error("logout request failed");
+        }
+        showLogin("");
+        setStatus("로그아웃했습니다.", false);
+      } catch (error) {
+        setStatus("로그아웃하지 못했습니다. 잠시 후 다시 시도하세요.", true);
       }
     });
 
