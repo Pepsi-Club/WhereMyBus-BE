@@ -38,11 +38,13 @@
 ### Task 1: Minute Bucket Schema and Repository
 
 **Files:**
+
 - Create: `src/bus-api-metric/bus-api-metric.schema.ts`
 - Create: `src/bus-api-metric/bus-api-metric.repository.ts`
 - Create: `src/bus-api-metric/bus-api-metric.repository.spec.ts`
 
 **Interfaces:**
+
 - Consumes: Mongoose `Model<BusApiMetric>` and UTC `Date` inputs.
 - Produces: `BusApiMetricRepository.upsertBucket(bucket)`, `sumSince(start, end)`, `aggregateSeries(start, end, unit)`, `findLastCollectedAt()`.
 
@@ -170,10 +172,12 @@ git commit -m "[Feat] 버스 API 메트릭 저장소 추가"
 ### Task 2: In-Memory Recorder, Sparse Flush, and Retry Queue
 
 **Files:**
+
 - Create: `src/bus-api-metric/bus-api-metric.service.ts`
 - Create: `src/bus-api-metric/bus-api-metric.service.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `BusApiMetricRepository.upsertBucket()`, `ConfigService`, optional `Date` supplied by caller/tests.
 - Produces: `recordRequest(at?: Date): void`, `recordError(at?: Date): void`, `flushCompletedBuckets(now?: Date): Promise<void>`, `onApplicationShutdown(): Promise<void>`.
 
@@ -268,6 +272,7 @@ git commit -m "[Feat] 버스 API 분 단위 메트릭 집계 추가"
 ### Task 3: Instrument Actual Seoul Bus HTTP Requests
 
 **Files:**
+
 - Modify: `src/bus-info/bus-info.service.ts`
 - Replace: `src/bus-info/bus-info.service.spec.ts`
 - Modify: `src/bus-info/bus-info.module.ts`
@@ -276,6 +281,7 @@ git commit -m "[Feat] 버스 API 분 단위 메트릭 집계 추가"
 - Modify: `src/regular-alarm/regular-alarm.module.ts`
 
 **Interfaces:**
+
 - Consumes: `BusApiMetricService.recordRequest(at)`, `recordError(at)` and repository/schema from Tasks 1-2.
 - Produces: exactly one request metric per `axios.get`, with errors tied to request start minute; exports repository/service for Dashboard queries.
 
@@ -364,6 +370,7 @@ git commit -m "[Feat] 버스 API 요청 계측 연결"
 ### Task 4: Dashboard Session Authentication and Login Rate Limit
 
 **Files:**
+
 - Create: `src/bus-api-metric/dashboard-auth.service.ts`
 - Create: `src/bus-api-metric/dashboard-auth.service.spec.ts`
 - Create: `src/bus-api-metric/dashboard-auth.guard.ts`
@@ -371,6 +378,7 @@ git commit -m "[Feat] 버스 API 요청 계측 연결"
 - Create: `src/bus-api-metric/dto/dashboard-auth.request.dto.ts`
 
 **Interfaces:**
+
 - Consumes: `ConfigService`, request IP, raw `Cookie` header.
 - Produces: `authenticate(code, ip, now?)`, `createSession(now?)`, `verifySession(token, now?)`, `DashboardAuthGuard.canActivate()` and cookie name `wmb_dashboard_session`.
 
@@ -382,17 +390,17 @@ Use literal secrets through a test `ConfigService` and fake dates.
 it('올바른 코드로 만든 session을 TTL 안에서 검증한다', () => {
   auth.authenticate('developer-code-1234', '127.0.0.1');
   const token = auth.createSession(new Date('2026-09-30T00:00:00.000Z'));
-  expect(
-    auth.verifySession(token, new Date('2026-09-30T07:59:59.000Z')),
-  ).toBe(true);
+  expect(auth.verifySession(token, new Date('2026-09-30T07:59:59.000Z'))).toBe(
+    true,
+  );
 });
 
 it('변조되거나 만료된 session을 거부한다', () => {
   const token = auth.createSession(new Date('2026-09-30T00:00:00.000Z'));
   expect(auth.verifySession(`${token}x`)).toBe(false);
-  expect(
-    auth.verifySession(token, new Date('2026-09-30T08:00:01.000Z')),
-  ).toBe(false);
+  expect(auth.verifySession(token, new Date('2026-09-30T08:00:01.000Z'))).toBe(
+    false,
+  );
 });
 
 it('같은 IP의 6번째 실패를 429로 막고 성공하면 실패 기록을 지운다', () => {
@@ -459,6 +467,7 @@ git commit -m "[Feat] 대시보드 세션 인증 추가"
 ### Task 5: Metrics Query Service and Protected Dashboard API
 
 **Files:**
+
 - Create: `src/bus-api-metric/dashboard-metric.service.ts`
 - Create: `src/bus-api-metric/dashboard-metric.service.spec.ts`
 - Create: `src/bus-api-metric/bus-api-metric.controller.ts`
@@ -467,6 +476,7 @@ git commit -m "[Feat] 대시보드 세션 인증 추가"
 - Modify: `src/bus-api-metric/bus-api-metric.module.ts`
 
 **Interfaces:**
+
 - Consumes: repository query methods, `DashboardAuthService`, `DashboardAuthGuard`.
 - Produces: auth/session/logout endpoints and `getMetrics(range, now?)` response matching spec.
 
@@ -598,12 +608,14 @@ git commit -m "[Feat] 대시보드 메트릭 API 추가"
 ### Task 6: Static Dashboard
 
 **Files:**
+
 - Create: `../dashboard/index.html`
 - Create: `../dashboard/dashboard.js`
 - Create: `../dashboard/dashboard.css`
 - Create: `src/bus-api-metric/dashboard-assets.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `/api/dashboard/auth`, `/session`, `/metrics`, `/logout` from Task 5.
 - Produces: `/dashboard/` login and authenticated metrics view with summary cards, range selection, SVG chart, error/session states.
 
@@ -654,7 +666,9 @@ HTML includes:
   <section id="login-view" aria-labelledby="login-title">...</section>
   <section id="dashboard-view" hidden aria-labelledby="dashboard-title">
     <div id="summary-cards" aria-live="polite">...</div>
-    <select id="range-select" aria-label="조회 기간">...</select>
+    <select id="range-select" aria-label="조회 기간">
+      ...
+    </select>
     <svg id="request-chart" role="img" aria-labelledby="chart-title"></svg>
   </section>
   <p id="status-message" role="status" aria-live="polite"></p>
@@ -686,6 +700,7 @@ git commit -m "[Feat] 버스 API 메트릭 대시보드 화면 추가"
 ### Task 7: Runtime Security, Regression Verification, and Deployment Handoff
 
 **Files:**
+
 - Modify: `src/main.ts`
 - Create: `src/main.spec.ts`
 - Modify: `test/app.e2e-spec.ts`
@@ -693,6 +708,7 @@ git commit -m "[Feat] 버스 API 메트릭 대시보드 화면 추가"
 - Modify: `docs/superpowers/specs/2026-09-30-mongodb-dashboard-metrics-design.md`
 
 **Interfaces:**
+
 - Consumes: complete module and static assets from Tasks 1-6.
 - Produces: loopback-default server binding, loopback proxy trust, shutdown hooks, end-to-end startup coverage, final deployment commands.
 
@@ -732,9 +748,7 @@ export async function configureApplication(
   app: INestApplication,
   configService: ConfigService,
 ): Promise<void> {
-  app.useGlobalPipes(
-    new ValidationPipe({ forbidNonWhitelisted: true }),
-  );
+  app.useGlobalPipes(new ValidationPipe({ forbidNonWhitelisted: true }));
   app.getHttpAdapter().getInstance().set('trust proxy', 'loopback');
   app.enableShutdownHooks();
   const port = configService.get<number>('PORT', 3000);

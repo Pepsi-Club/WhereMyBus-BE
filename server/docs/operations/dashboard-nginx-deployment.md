@@ -18,12 +18,12 @@
 
 URL 매핑:
 
-| URL | 처리 주체 | 대상 |
-| --- | --- | --- |
-| `/dashboard` | Nginx | `/dashboard/`로 redirect |
-| `/dashboard/` | Nginx | static `index.html` |
-| `/dashboard/*` | Nginx | static asset |
-| `/api/dashboard/*` | NestJS | `127.0.0.1:3000` proxy |
+| URL                | 처리 주체 | 대상                     |
+| ------------------ | --------- | ------------------------ |
+| `/dashboard`       | Nginx     | `/dashboard/`로 redirect |
+| `/dashboard/`      | Nginx     | static `index.html`      |
+| `/dashboard/*`     | Nginx     | static asset             |
+| `/api/dashboard/*` | NestJS    | `127.0.0.1:3000` proxy   |
 
 ## 2. Dashboard 파일 확인
 
