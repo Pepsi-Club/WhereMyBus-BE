@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { DashboardLoginAttemptLimiter } from './dashboard-login-attempt-limiter';
 
 export const DASHBOARD_SESSION_COOKIE = 'wmb_dashboard_session';
 
@@ -22,14 +23,18 @@ const MIN_SESSION_SECRET_LENGTH = 32;
 
 @Injectable()
 export class DashboardAuthService {
-  private readonly failedAttempts = new Map<string, number[]>();
+  private readonly loginAttemptLimiter: DashboardLoginAttemptLimiter;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {
+    this.loginAttemptLimiter = new DashboardLoginAttemptLimiter(
+      this.loginMaxAttempts,
+      this.loginWindowSeconds * 1_000,
+    );
+  }
 
   authenticate(code: string, ip: string, now = new Date()): void {
     this.assertEnabled();
-    const attempts = this.activeAttempts(ip, now);
-    if (attempts.length >= this.loginMaxAttempts) {
+    if (this.loginAttemptLimiter.hasReachedLimit(ip, now)) {
       throw new HttpException(
         'Too many authentication attempts',
         HttpStatus.TOO_MANY_REQUESTS,
@@ -40,12 +45,11 @@ export class DashboardAuthService {
       !this.configurationIsValid() ||
       !this.safeEqual(code, this.accessCode)
     ) {
-      attempts.push(now.getTime());
-      this.failedAttempts.set(ip, attempts);
+      this.loginAttemptLimiter.recordFailure(ip, now);
       throw this.authenticationFailed();
     }
 
-    this.failedAttempts.delete(ip);
+    this.loginAttemptLimiter.reset(ip);
   }
 
   createSession(now = new Date()): string {
@@ -135,19 +139,6 @@ export class DashboardAuthService {
       this.sessionSecret.length >= MIN_SESSION_SECRET_LENGTH &&
       this.accessCode !== this.sessionSecret
     );
-  }
-
-  private activeAttempts(ip: string, now: Date): number[] {
-    const cutoff = now.getTime() - this.loginWindowSeconds * 1000;
-    const attempts = (this.failedAttempts.get(ip) ?? []).filter(
-      (attempt) => attempt > cutoff,
-    );
-    if (attempts.length === 0) {
-      this.failedAttempts.delete(ip);
-    } else {
-      this.failedAttempts.set(ip, attempts);
-    }
-    return attempts;
   }
 
   private sign(encodedPayload: string): string {

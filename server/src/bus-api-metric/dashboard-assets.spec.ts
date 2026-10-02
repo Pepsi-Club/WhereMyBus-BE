@@ -227,6 +227,36 @@ describe('Dashboard static helpers', () => {
 });
 
 describe('Dashboard mounted behavior', () => {
+  it('로그인 성공 뒤 늦게 도착한 session 실패가 Dashboard를 덮어쓰지 않는다', async () => {
+    const document = new FakeDocument();
+    const initialSession = deferred<FakeResponse>();
+    const fetchFn: FetchFn = async (url) => {
+      if (url.endsWith('/session')) {
+        return initialSession.promise;
+      }
+      if (url.endsWith('/auth')) {
+        return response(201, { authenticated: true });
+      }
+      return response(200, metricsPayload(7));
+    };
+
+    mount(document, fetchFn);
+    await settleAsyncWork();
+    document.getElementById('access-code').value = 'developer-code-1234';
+    await document.getElementById('login-form').dispatch('submit');
+
+    expect(document.getElementById('dashboard-view').hidden).toBe(false);
+    expect(document.getElementById('range-requests').textContent).toBe('7');
+    expect(document.getElementById('status-message').textContent).toBe('');
+
+    initialSession.resolve(response(401));
+    await settleAsyncWork();
+
+    expect(document.getElementById('dashboard-view').hidden).toBe(false);
+    expect(document.getElementById('range-requests').textContent).toBe('7');
+    expect(document.getElementById('status-message').textContent).toBe('');
+  });
+
   it.each([
     ['HTTP 오류', async () => response(500)],
     ['network 오류', async () => Promise.reject(new Error('offline'))],

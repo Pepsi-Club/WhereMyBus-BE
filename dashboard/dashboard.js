@@ -117,6 +117,16 @@
     const statusMessage = document.getElementById("status-message");
     const refreshButton = document.getElementById("refresh-button");
     let metricRequestGeneration = 0;
+    let authRequestGeneration = 0;
+
+    function beginAuthRequest() {
+      authRequestGeneration += 1;
+      return authRequestGeneration;
+    }
+
+    function isCurrentAuthRequest(generation) {
+      return generation === authRequestGeneration;
+    }
 
     function setStatus(message, isError) {
       statusMessage.textContent = message || "";
@@ -264,8 +274,12 @@
     }
 
     async function checkSession() {
+      const generation = beginAuthRequest();
       try {
         const response = await apiFetch("/session");
+        if (!isCurrentAuthRequest(generation)) {
+          return;
+        }
         if (response.ok) {
           showDashboard();
           await loadMetrics();
@@ -273,12 +287,15 @@
         }
         showLogin("");
       } catch (error) {
-        showLogin("서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.");
+        if (isCurrentAuthRequest(generation)) {
+          showLogin("서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.");
+        }
       }
     }
 
     loginForm.addEventListener("submit", async function (event) {
       event.preventDefault();
+      const generation = beginAuthRequest();
       const code = accessCode.value;
       setStatus("인증 중입니다.", false);
       try {
@@ -286,6 +303,9 @@
           method: "POST",
           body: JSON.stringify({ code: code }),
         });
+        if (!isCurrentAuthRequest(generation)) {
+          return;
+        }
         accessCode.value = "";
         if (!response.ok) {
           setStatus(
@@ -299,24 +319,35 @@
         showDashboard();
         await loadMetrics();
       } catch (error) {
-        accessCode.value = "";
-        setStatus("로그인 요청에 실패했습니다. 잠시 후 다시 시도하세요.", true);
+        if (isCurrentAuthRequest(generation)) {
+          accessCode.value = "";
+          setStatus(
+            "로그인 요청에 실패했습니다. 잠시 후 다시 시도하세요.",
+            true
+          );
+        }
       }
     });
 
     rangeSelect.addEventListener("change", loadMetrics);
     refreshButton.addEventListener("click", loadMetrics);
     logoutButton.addEventListener("click", async function () {
+      const generation = beginAuthRequest();
       setStatus("로그아웃 중입니다.", false);
       try {
         const response = await apiFetch("/logout", { method: "POST" });
+        if (!isCurrentAuthRequest(generation)) {
+          return;
+        }
         if (!response.ok) {
           throw new Error("logout request failed");
         }
         showLogin("");
         setStatus("로그아웃했습니다.", false);
       } catch (error) {
-        setStatus("로그아웃하지 못했습니다. 잠시 후 다시 시도하세요.", true);
+        if (isCurrentAuthRequest(generation)) {
+          setStatus("로그아웃하지 못했습니다. 잠시 후 다시 시도하세요.", true);
+        }
       }
     });
 
