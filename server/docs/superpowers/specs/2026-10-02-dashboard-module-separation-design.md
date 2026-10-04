@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed for review.
+Approved on 2026-10-05.
 
 ## Context
 
