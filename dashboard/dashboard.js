@@ -263,15 +263,98 @@
             ? summarySource.lastCollectedAt
             : null,
       },
-      series: seriesSource.map(function (point) {
-        const sourcePoint = point && typeof point === "object" ? point : {};
-        return {
-          start: typeof sourcePoint.start === "string" ? sourcePoint.start : "",
-          requestCount: safeNumber(sourcePoint.requestCount),
-          errorCount: safeNumber(sourcePoint.errorCount),
-        };
-      }),
+      series: seriesSource
+        .filter(function (point) {
+          return (
+            point &&
+            Number.isInteger(point.weekday) &&
+            point.weekday >= 1 &&
+            point.weekday <= 7
+          );
+        })
+        .map(function (point) {
+          const sourcePoint = point && typeof point === "object" ? point : {};
+          return {
+            start:
+              typeof sourcePoint.start === "string" ? sourcePoint.start : "",
+            requestCount: safeNumber(sourcePoint.requestCount),
+            errorCount: safeNumber(sourcePoint.errorCount),
+            weekday: sourcePoint.weekday,
+          };
+        }),
     };
+  }
+
+  function normalizeDimensionCatalog(payload) {
+    const providers = [];
+    const providerKeys = new Set();
+    const source =
+      payload && Array.isArray(payload.providers) ? payload.providers : [];
+    source.forEach(function (provider) {
+      if (
+        !provider ||
+        typeof provider.key !== "string" ||
+        !provider.key.trim() ||
+        typeof provider.label !== "string" ||
+        providerKeys.has(provider.key) ||
+        !Array.isArray(provider.operations)
+      )
+        return;
+      const operationKeys = new Set();
+      const operations = [];
+      provider.operations.forEach(function (operation) {
+        if (
+          !operation ||
+          typeof operation.key !== "string" ||
+          !operation.key.trim() ||
+          typeof operation.label !== "string" ||
+          operationKeys.has(operation.key)
+        )
+          return;
+        operationKeys.add(operation.key);
+        operations.push({ key: operation.key, label: operation.label });
+      });
+      if (!operations.length) return;
+      providerKeys.add(provider.key);
+      providers.push({
+        key: provider.key,
+        label: provider.label,
+        operations: operations,
+      });
+    });
+    return { providers: providers };
+  }
+
+  function filterSeriesByWeekdays(series, weekdays) {
+    const selected = new Set(weekdays);
+    return normalizeMetrics({ series: series }).series.filter(function (point) {
+      return selected.has(point.weekday);
+    });
+  }
+
+  function summarizeSeries(series) {
+    const totals = series.reduce(
+      function (summary, point) {
+        summary.requestCount += safeNumber(point.requestCount);
+        summary.errorCount += safeNumber(point.errorCount);
+        return summary;
+      },
+      { requestCount: 0, errorCount: 0 }
+    );
+    return {
+      requestCount: totals.requestCount,
+      errorCount: totals.errorCount,
+      errorRate: calculateErrorRate(totals.requestCount, totals.errorCount),
+    };
+  }
+
+  function buildMetricsQuery(range, providers, operations) {
+    let query = `/metrics?range=${encodeURIComponent(range)}`;
+    if (providers.length)
+      query += `&providers=${encodeURIComponent(providers.join(","))}`;
+    if (operations.length)
+      query += `&operations=${encodeURIComponent(operations.join(","))}`;
+    return query;
   }
 
   function mount(document, fetchFn, resolveChartConstructor, reducedMotion) {
@@ -283,6 +366,21 @@
     const logoutButton = document.getElementById("logout-button");
     const statusMessage = document.getElementById("status-message");
     const refreshButton = document.getElementById("refresh-button");
+    const applyButton = document.getElementById("filter-apply");
+    const dimensionState = document.getElementById("dimension-state");
+    const allWeekdays = [1, 2, 3, 4, 5, 6, 7];
+    const filterState = {
+      weekdays: new Set(allWeekdays),
+      draftProviders: new Set(),
+      draftOperations: new Set(),
+      appliedProviders: [],
+      appliedOperations: [],
+      catalog: { providers: [] },
+      metrics: null,
+      range: rangeSelect.value,
+    };
+    let dimensionRequestGeneration = 0;
+    let dimensionsReady = false;
     const chartRenderer = createChartRenderer(
       resolveChartConstructor,
       reducedMotion
@@ -317,6 +415,8 @@
 
     function showLogin(message) {
       metricRequestGeneration += 1;
+      dimensionRequestGeneration += 1;
+      filterState.metrics = null;
       chartRenderer.destroy();
       loginView.hidden = false;
       dashboardView.hidden = true;
@@ -343,8 +443,14 @@
       return fetchFn(`${API_BASE}${path}`, request);
     }
 
-    function renderMetrics(payload) {
-      const metrics = normalizeMetrics(payload);
+    function renderMetrics() {
+      const metrics = filterState.metrics;
+      if (!metrics) return;
+      const series = filterSeriesByWeekdays(
+        metrics.series,
+        filterState.weekdays
+      );
+      const summary = summarizeSeries(series);
       document.getElementById("today-requests").textContent = formatCount(
         metrics.summary.todayRequests
       );
@@ -352,13 +458,13 @@
         metrics.summary.monthRequests
       );
       document.getElementById("range-requests").textContent = formatCount(
-        metrics.summary.rangeRequests
+        summary.requestCount
       );
       document.getElementById("range-errors").textContent = formatCount(
-        metrics.summary.rangeErrors
+        summary.errorCount
       );
       document.getElementById("error-rate").textContent = `${(
-        metrics.summary.errorRate * 100
+        summary.errorRate * 100
       ).toFixed(2)}%`;
 
       const collected = metrics.summary.lastCollectedAt
@@ -372,17 +478,228 @@
       chartRenderer.render(
         document.getElementById("request-chart"),
         document.getElementById("chart-state"),
-        metrics.series,
-        rangeSelect.value
+        series,
+        filterState.range
       );
+    }
+
+    function createOption(group, key, labelText, selected, onChange) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      const text = document.createElement("span");
+      label.className = "filter-option";
+      input.id = `${group}-option-${key}`;
+      input.type = "checkbox";
+      input.value = String(key);
+      input.checked = selected.has(key);
+      label.htmlFor = input.id;
+      text.textContent = labelText;
+      input.addEventListener("change", function () {
+        if (!input.checked && selected.size === 1) {
+          input.checked = true;
+          return;
+        }
+        if (input.checked) selected.add(key);
+        else selected.delete(key);
+        onChange();
+      });
+      label.appendChild(input);
+      label.appendChild(text);
+      return label;
+    }
+
+    function renderWeekdays() {
+      const container = document.getElementById("weekday-filters");
+      container.replaceChildren();
+      const labels = [
+        "월요일",
+        "화요일",
+        "수요일",
+        "목요일",
+        "금요일",
+        "토요일",
+        "일요일",
+      ];
+      allWeekdays.forEach(function (day) {
+        container.appendChild(
+          createOption(
+            "weekday",
+            day,
+            labels[day - 1],
+            filterState.weekdays,
+            function () {
+              updatePresets();
+              renderMetrics();
+            }
+          )
+        );
+      });
+      updatePresets();
+    }
+
+    function presetDays(preset) {
+      return preset === "weekday"
+        ? [1, 2, 3, 4, 5]
+        : preset === "weekend"
+        ? [6, 7]
+        : allWeekdays;
+    }
+
+    function updatePresets() {
+      document
+        .querySelectorAll("[data-weekday-preset]")
+        .forEach(function (button) {
+          const days = presetDays(button.dataset.weekdayPreset);
+          button.setAttribute(
+            "aria-pressed",
+            String(
+              days.length === filterState.weekdays.size &&
+                days.every(function (day) {
+                  return filterState.weekdays.has(day);
+                })
+            )
+          );
+        });
+    }
+
+    function compatibleOperations() {
+      const operations = new Map();
+      filterState.catalog.providers.forEach(function (provider) {
+        if (filterState.draftProviders.has(provider.key))
+          provider.operations.forEach(function (operation) {
+            if (!operations.has(operation.key))
+              operations.set(operation.key, operation);
+          });
+      });
+      return Array.from(operations.values());
+    }
+
+    function reconcileOperations() {
+      const operations = compatibleOperations();
+      const keys = new Set(
+        operations.map(function (operation) {
+          return operation.key;
+        })
+      );
+      filterState.draftOperations.forEach(function (key) {
+        if (!keys.has(key)) filterState.draftOperations.delete(key);
+      });
+      if (!filterState.draftOperations.size)
+        keys.forEach(function (key) {
+          filterState.draftOperations.add(key);
+        });
+      renderOperations();
+    }
+
+    function renderOperations() {
+      const container = document.getElementById("operation-filters");
+      container.replaceChildren();
+      compatibleOperations().forEach(function (operation) {
+        container.appendChild(
+          createOption(
+            "operation",
+            operation.key,
+            operation.label,
+            filterState.draftOperations,
+            function () {}
+          )
+        );
+      });
+    }
+
+    function selectAllDimensions() {
+      filterState.draftProviders = new Set(
+        filterState.catalog.providers.map(function (provider) {
+          return provider.key;
+        })
+      );
+      filterState.draftOperations = new Set();
+      compatibleOperations().forEach(function (operation) {
+        filterState.draftOperations.add(operation.key);
+      });
+    }
+
+    function renderDimensions() {
+      const container = document.getElementById("provider-filters");
+      container.replaceChildren();
+      filterState.catalog.providers.forEach(function (provider) {
+        container.appendChild(
+          createOption(
+            "provider",
+            provider.key,
+            provider.label,
+            filterState.draftProviders,
+            reconcileOperations
+          )
+        );
+      });
+      renderOperations();
+    }
+
+    function setDimensionsEnabled(enabled) {
+      dimensionsReady = enabled;
+      document.getElementById("provider-fieldset").disabled = !enabled;
+      document.getElementById("operation-fieldset").disabled = !enabled;
+      applyButton.disabled = !enabled;
+    }
+
+    async function loadDimensions(authGeneration) {
+      const generation = ++dimensionRequestGeneration;
+      const isCurrent = function () {
+        return (
+          generation === dimensionRequestGeneration &&
+          isCurrentAuthRequest(authGeneration)
+        );
+      };
+      setDimensionsEnabled(false);
+      filterState.appliedProviders = [];
+      filterState.appliedOperations = [];
+      dimensionState.textContent = "API 분류를 불러오는 중입니다.";
+      try {
+        const response = await apiFetch("/metric-dimensions");
+        if (!isCurrent()) return false;
+        if (response.status === 401) {
+          showLogin("세션이 만료되었습니다. 다시 로그인하세요.");
+          return false;
+        }
+        if (!response.ok) throw new Error("dimension request failed");
+        const payload = await response.json();
+        if (!isCurrent()) return false;
+        const catalog = normalizeDimensionCatalog(payload);
+        if (!catalog.providers.length)
+          throw new Error("empty dimension catalog");
+        filterState.catalog = catalog;
+        selectAllDimensions();
+        renderDimensions();
+        setDimensionsEnabled(true);
+        dimensionState.textContent = "";
+      } catch (error) {
+        if (!isCurrent()) return false;
+        filterState.catalog = { providers: [] };
+        selectAllDimensions();
+        renderDimensions();
+        setDimensionsEnabled(false);
+        dimensionState.textContent =
+          "API 분류를 불러오지 못했습니다. 전체 API 통계를 표시합니다.";
+      }
+      return isCurrent();
+    }
+
+    async function loadDashboard(authGeneration) {
+      if (await loadDimensions(authGeneration)) await loadMetrics();
     }
 
     async function loadMetrics() {
       const generation = ++metricRequestGeneration;
+      const range = rangeSelect.value;
       setStatus("통계를 불러오는 중입니다.", false);
       try {
         const response = await apiFetch(
-          `/metrics?range=${encodeURIComponent(rangeSelect.value)}`
+          buildMetricsQuery(
+            range,
+            filterState.appliedProviders,
+            filterState.appliedOperations
+          )
         );
         if (generation !== metricRequestGeneration) {
           return;
@@ -398,7 +715,9 @@
         if (generation !== metricRequestGeneration) {
           return;
         }
-        renderMetrics(payload);
+        filterState.metrics = normalizeMetrics(payload);
+        filterState.range = range;
+        renderMetrics();
         setStatus("", false);
       } catch (error) {
         if (generation === metricRequestGeneration) {
@@ -419,7 +738,7 @@
         }
         if (response.ok) {
           showDashboard();
-          await loadMetrics();
+          await loadDashboard(generation);
           return;
         }
         showLogin("");
@@ -459,7 +778,7 @@
           return;
         }
         showDashboard();
-        await loadMetrics();
+        await loadDashboard(generation);
       } catch (error) {
         if (isCurrentAuthRequest(generation)) {
           accessCode.value = "";
@@ -476,6 +795,38 @@
     });
 
     rangeSelect.addEventListener("change", loadMetrics);
+    document
+      .querySelectorAll("[data-weekday-preset]")
+      .forEach(function (button) {
+        button.addEventListener("click", function () {
+          filterState.weekdays = new Set(
+            presetDays(button.dataset.weekdayPreset)
+          );
+          renderWeekdays();
+          renderMetrics();
+        });
+      });
+    applyButton.addEventListener("click", function () {
+      if (!dimensionsReady) return;
+      filterState.appliedProviders = Array.from(filterState.draftProviders);
+      filterState.appliedOperations = compatibleOperations()
+        .filter(function (operation) {
+          return filterState.draftOperations.has(operation.key);
+        })
+        .map(function (operation) {
+          return operation.key;
+        });
+      return loadMetrics();
+    });
+    document
+      .getElementById("filter-reset")
+      .addEventListener("click", function () {
+        filterState.weekdays = new Set(allWeekdays);
+        selectAllDimensions();
+        renderWeekdays();
+        renderDimensions();
+        renderMetrics();
+      });
     refreshButton.addEventListener("click", loadMetrics);
     logoutButton.addEventListener("click", async function () {
       if (logoutPending) {
@@ -505,6 +856,8 @@
       }
     });
 
+    renderWeekdays();
+    setDimensionsEnabled(false);
     checkSession();
   }
 
@@ -516,6 +869,10 @@
     buildChartConfig: buildChartConfig,
     createChartRenderer: createChartRenderer,
     normalizeMetrics: normalizeMetrics,
+    normalizeDimensionCatalog: normalizeDimensionCatalog,
+    filterSeriesByWeekdays: filterSeriesByWeekdays,
+    summarizeSeries: summarizeSeries,
+    buildMetricsQuery: buildMetricsQuery,
     mount: mount,
   };
 });

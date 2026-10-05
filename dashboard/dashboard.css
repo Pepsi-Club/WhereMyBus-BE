@@ -229,6 +229,110 @@ button.secondary:hover {
   gap: 6px;
 }
 
+.metric-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e6f0;
+}
+
+.filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter-heading,
+.weekday-fieldset,
+#dimension-state {
+  grid-column: 1 / -1;
+}
+
+.filter-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.metric-filters fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #d6deeb;
+  border-radius: 12px;
+}
+
+.metric-filters legend {
+  padding: 0 6px;
+  color: #46556d;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.filter-options,
+.filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-presets {
+  margin-bottom: 10px;
+}
+
+.filter-presets button[aria-pressed="true"] {
+  border-color: #305cff;
+  background: #eef2ff;
+  color: #234be2;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #f6f8fc;
+  color: #344158;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.filter-option input {
+  flex: 0 0 auto;
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: #305cff;
+}
+
+.metric-filters fieldset:disabled .filter-option,
+.metric-filters button:disabled {
+  color: #60708b;
+  background: #edf1f7;
+  cursor: default;
+}
+
+#dimension-state {
+  margin: 0;
+  color: #60708b;
+  font-size: 0.85rem;
+}
+
+#dimension-state:empty {
+  display: none;
+}
+
+#filter-apply {
+  justify-self: start;
+}
+
 .chart-container {
   position: relative;
   height: 360px;
@@ -303,6 +407,10 @@ button.secondary:hover {
 
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metric-filters {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .summary-card {

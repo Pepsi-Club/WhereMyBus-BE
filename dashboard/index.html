@@ -47,7 +47,7 @@
       >
         <header class="dashboard-header">
           <div>
-            <p class="eyebrow">SEOUL BUS API · ASIA/SEOUL</p>
+            <p class="eyebrow">BUS API · ASIA/SEOUL</p>
             <h1 id="dashboard-title">호출량 Dashboard</h1>
           </div>
           <div class="header-actions">
@@ -99,6 +99,54 @@
               </select>
             </label>
           </div>
+          <section class="metric-filters" aria-labelledby="metric-filter-title">
+            <div class="filter-heading">
+              <h3 id="metric-filter-title">조회 필터</h3>
+              <button id="filter-reset" class="secondary" type="button">
+                초기화
+              </button>
+            </div>
+            <fieldset class="weekday-fieldset">
+              <legend>요일</legend>
+              <div class="filter-presets" aria-label="요일 빠른 선택">
+                <button
+                  id="weekday-preset-all"
+                  class="secondary"
+                  type="button"
+                  data-weekday-preset="all"
+                >
+                  전체
+                </button>
+                <button
+                  id="weekday-preset-weekday"
+                  class="secondary"
+                  type="button"
+                  data-weekday-preset="weekday"
+                >
+                  평일
+                </button>
+                <button
+                  id="weekday-preset-weekend"
+                  class="secondary"
+                  type="button"
+                  data-weekday-preset="weekend"
+                >
+                  주말
+                </button>
+              </div>
+              <div id="weekday-filters" class="filter-options"></div>
+            </fieldset>
+            <fieldset id="provider-fieldset" disabled>
+              <legend>제공기관</legend>
+              <div id="provider-filters" class="filter-options"></div>
+            </fieldset>
+            <fieldset id="operation-fieldset" disabled>
+              <legend>호출 API</legend>
+              <div id="operation-filters" class="filter-options"></div>
+            </fieldset>
+            <p id="dimension-state" role="status" aria-live="polite"></p>
+            <button id="filter-apply" type="button" disabled>필터 적용</button>
+          </section>
           <div class="chart-container">
             <canvas
               id="request-chart"
