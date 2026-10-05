@@ -2,15 +2,15 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import * as request from 'supertest';
-import { BusApiMetricController } from './bus-api-metric.controller';
-import { DashboardAuthModule } from '../dashboard/auth/dashboard-auth.module';
+import { DashboardController } from './dashboard.controller';
+import { DashboardAuthModule } from './auth/dashboard-auth.module';
 import {
   DASHBOARD_SESSION_COOKIE,
   DashboardAuthService,
-} from '../dashboard/auth/dashboard-auth.service';
+} from './auth/dashboard-auth.service';
 import { DashboardMetricService } from './dashboard-metric.service';
 
-describe('BusApiMetricController', () => {
+describe('DashboardController', () => {
   let app: INestApplication;
   let authService: DashboardAuthService;
   const metricResponse = {
@@ -45,7 +45,7 @@ describe('BusApiMetricController', () => {
         }),
         DashboardAuthModule,
       ],
-      controllers: [BusApiMetricController],
+      controllers: [DashboardController],
       providers: [
         {
           provide: DashboardMetricService,

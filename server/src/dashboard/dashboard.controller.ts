@@ -9,17 +9,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { DashboardAuthGuard } from '../dashboard/auth/dashboard-auth.guard';
+import { DashboardAuthGuard } from './auth/dashboard-auth.guard';
 import {
   DASHBOARD_SESSION_COOKIE,
   DashboardAuthService,
-} from '../dashboard/auth/dashboard-auth.service';
+} from './auth/dashboard-auth.service';
 import { DashboardMetricService } from './dashboard-metric.service';
-import { DashboardAuthRequestDto } from '../dashboard/auth/dto/dashboard-auth.request.dto';
+import { DashboardAuthRequestDto } from './auth/dto/dashboard-auth.request.dto';
 import { DashboardRangeQueryDto } from './dto/dashboard-range.query.dto';
 
 @Controller('api/dashboard')
-export class BusApiMetricController {
+export class DashboardController {
   constructor(
     private readonly authService: DashboardAuthService,
     private readonly metricService: DashboardMetricService,

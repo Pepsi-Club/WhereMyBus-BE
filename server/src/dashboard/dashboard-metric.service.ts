@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   BusApiMetricRepository,
   MetricUnit,
-} from './bus-api-metric.repository';
+} from '../bus-api-metric/bus-api-metric.repository';
 
 export const DASHBOARD_RANGES = ['24h', '7d', '30d', '90d'] as const;
 export type DashboardRange = (typeof DASHBOARD_RANGES)[number];

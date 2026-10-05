@@ -1,10 +1,13 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Connection, createConnection, Model } from 'mongoose';
-import { BusApiMetric, BusApiMetricSchema } from './bus-api-metric.schema';
+import {
+  BusApiMetric,
+  BusApiMetricSchema,
+} from '../bus-api-metric/bus-api-metric.schema';
 import {
   BusApiMetricRepository,
   StoredMetricBucket,
-} from './bus-api-metric.repository';
+} from '../bus-api-metric/bus-api-metric.repository';
 import { DashboardMetricService } from './dashboard-metric.service';
 
 describe('DashboardMetricService', () => {
