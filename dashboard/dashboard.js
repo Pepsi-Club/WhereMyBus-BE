@@ -23,6 +23,129 @@
     return new Intl.NumberFormat("ko-KR").format(safeNumber(value));
   }
 
+  function prepareChartSeries(series) {
+    return (Array.isArray(series) ? series : [])
+      .map(function (point) {
+        return {
+          timestamp: Date.parse(point.start),
+          start: point.start,
+          requestCount: safeNumber(point.requestCount),
+          errorCount: safeNumber(point.errorCount),
+        };
+      })
+      .filter(function (point) {
+        return Number.isFinite(point.timestamp);
+      })
+      .sort(function (left, right) {
+        return left.timestamp - right.timestamp;
+      });
+  }
+
+  function formatChartTimestamp(timestamp, range, includeTime) {
+    const options = {
+      timeZone: "Asia/Seoul",
+      month: "numeric",
+      day: "numeric",
+      hourCycle: "h23",
+    };
+    if (includeTime || range === "24h") {
+      options.hour = "2-digit";
+      options.minute = "2-digit";
+    } else if (range === "7d") {
+      options.hour = "2-digit";
+    }
+    return new Intl.DateTimeFormat("ko-KR", options).format(timestamp);
+  }
+
+  function calculateErrorRate(requestCount, errorCount) {
+    const requests = safeNumber(requestCount);
+    return requests === 0 ? 0 : safeNumber(errorCount) / requests;
+  }
+
+  function buildChartConfig(series, range, reducedMotion) {
+    const points = prepareChartSeries(series);
+    const pointRadius = points.length <= 30 ? 3 : 0;
+    const rateFormatter = new Intl.NumberFormat("ko-KR", {
+      style: "percent",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    return {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: "요청",
+            data: points.map(function (point) {
+              return { x: point.timestamp, y: point.requestCount };
+            }),
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37, 99, 235, 0.12)",
+            fill: true,
+            pointRadius: pointRadius,
+            pointHoverRadius: 5,
+          },
+          {
+            label: "오류",
+            data: points.map(function (point) {
+              return { x: point.timestamp, y: point.errorCount };
+            }),
+            borderColor: "#dc2626",
+            backgroundColor: "#dc2626",
+            borderDash: [6, 4],
+            fill: false,
+            pointRadius: pointRadius,
+            pointHoverRadius: 5,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        parsing: false,
+        animation: reducedMotion ? false : { duration: 250 },
+        interaction: { mode: "index", intersect: false, axis: "x" },
+        plugins: {
+          legend: { display: true, position: "top", align: "end" },
+          tooltip: {
+            callbacks: {
+              title: function (items) {
+                return items.length
+                  ? formatChartTimestamp(items[0].parsed.x, range, true)
+                  : "";
+              },
+              label: function (item) {
+                return `${item.dataset.label}: ${formatCount(item.parsed.y)}건`;
+              },
+              afterBody: function (items) {
+                const point = items.length ? points[items[0].dataIndex] : null;
+                return point
+                  ? `오류율: ${rateFormatter.format(
+                      calculateErrorRate(point.requestCount, point.errorCount)
+                    )}`
+                  : "";
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: "linear",
+            ticks: {
+              autoSkip: true,
+              maxRotation: 0,
+              callback: function (timestamp) {
+                return formatChartTimestamp(timestamp, range, false);
+              },
+            },
+          },
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+        },
+      },
+    };
+  }
+
   function buildLinePath(series, width, height) {
     return buildChartPoints(series, width, height)
       .map(function (point, index) {
@@ -356,6 +479,10 @@
 
   return {
     formatCount: formatCount,
+    prepareChartSeries: prepareChartSeries,
+    formatChartTimestamp: formatChartTimestamp,
+    calculateErrorRate: calculateErrorRate,
+    buildChartConfig: buildChartConfig,
     buildLinePath: buildLinePath,
     normalizeMetrics: normalizeMetrics,
     mount: mount,
