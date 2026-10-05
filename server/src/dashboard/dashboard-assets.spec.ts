@@ -753,6 +753,74 @@ describe('Dashboard mounted behavior', () => {
     expect(FakeChart.instances[1].destroyed).toBe(true);
     expect(document.getElementById('dashboard-view').hidden).toBe(true);
   });
+
+  it('canvas 등록 후 생성자가 실패하면 남은 인스턴스를 제거하고 재시도한다', async () => {
+    const document = new FakeDocument();
+    let failOnce = true;
+    class RegisteredChart extends FakeChart {
+      static registered = new Map<FakeElement, RegisteredChart>();
+
+      static getChart(canvas: FakeElement): RegisteredChart | undefined {
+        return this.registered.get(canvas);
+      }
+
+      constructor(canvas: FakeElement, config: ChartConfig) {
+        if (RegisteredChart.getChart(canvas)) {
+          throw new Error('Canvas is already in use');
+        }
+        super(canvas, config);
+        RegisteredChart.registered.set(canvas, this);
+        if (failOnce) {
+          failOnce = false;
+          throw new Error('chart initialization failed after registration');
+        }
+      }
+
+      destroy(): void {
+        RegisteredChart.registered.delete(this.canvas);
+        super.destroy();
+      }
+    }
+    const fetchFn: FetchFn = async (url) =>
+      url.endsWith('/session')
+        ? response(200)
+        : response(
+            200,
+            metricsPayload(3, [
+              {
+                start: '2026-10-01T00:00:00+09:00',
+                requestCount: 3,
+                errorCount: 1,
+              },
+            ]),
+          );
+
+    mount(document, fetchFn, () => RegisteredChart, false);
+    await settleAsyncWork();
+    const canvas = document.getElementById('request-chart');
+    expect(FakeChart.instances).toHaveLength(1);
+    expect(FakeChart.instances[0].destroyed).toBe(true);
+    expect(RegisteredChart.getChart(canvas)).toBeUndefined();
+    expect(document.getElementById('range-requests').textContent).toBe('3');
+    expect(canvas.hidden).toBe(true);
+    expect(document.getElementById('chart-state').textContent).toBe(
+      '차트를 표시하지 못했습니다. 새로고침해 주세요.',
+    );
+
+    await expect(
+      document.getElementById('refresh-button').dispatch('click'),
+    ).resolves.toBeUndefined();
+    expect(FakeChart.instances).toHaveLength(2);
+    expect(RegisteredChart.getChart(canvas)).toBe(FakeChart.instances[1]);
+    expect(FakeChart.instances[1].destroyed).toBe(false);
+    expect(canvas.hidden).toBe(false);
+    expect(document.getElementById('chart-state').textContent).toBe('');
+
+    await document.getElementById('refresh-button').dispatch('click');
+    expect(FakeChart.instances).toHaveLength(3);
+    expect(FakeChart.instances[1].destroyed).toBe(true);
+    expect(RegisteredChart.getChart(canvas)).toBe(FakeChart.instances[2]);
+  });
 });
 
 describe('Dashboard chart renderer', () => {

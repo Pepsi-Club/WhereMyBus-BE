@@ -198,8 +198,9 @@
         )}개 시점`
       );
 
+      let ChartConstructor;
       try {
-        const ChartConstructor = resolveChartConstructor();
+        ChartConstructor = resolveChartConstructor();
         if (typeof ChartConstructor !== "function") {
           throw new Error("Chart.js unavailable");
         }
@@ -215,6 +216,19 @@
         stateElement.hidden = false;
         stateElement.textContent =
           "차트를 표시하지 못했습니다. 새로고침해 주세요.";
+        try {
+          if (
+            ChartConstructor &&
+            typeof ChartConstructor.getChart === "function"
+          ) {
+            const failedChart = ChartConstructor.getChart(canvas);
+            if (failedChart) {
+              failedChart.destroy();
+            }
+          }
+        } catch (cleanupError) {
+          // Keep the failure state visible if partial-instance cleanup also fails.
+        }
       }
     }
 
