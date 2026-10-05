@@ -65,6 +65,7 @@ const {
   formatChartTimestamp,
   calculateErrorRate,
   buildChartConfig,
+  createChartRenderer,
   normalizeMetrics,
   mount,
 } = dashboardModule.exports as {
@@ -84,7 +85,24 @@ const {
     reducedMotion: boolean,
   ) => ChartConfig;
   normalizeMetrics: (payload: unknown) => unknown;
-  mount: (document: FakeDocument, fetchFn: FetchFn) => void;
+  createChartRenderer: (
+    resolveChartConstructor: () => typeof FakeChart | undefined,
+    reducedMotion: boolean,
+  ) => {
+    render: (
+      canvas: FakeElement,
+      stateElement: FakeElement,
+      series: SeriesPoint[],
+      range: ChartRange,
+    ) => void;
+    destroy: () => void;
+  };
+  mount: (
+    document: FakeDocument,
+    fetchFn: FetchFn,
+    resolveChartConstructor?: () => typeof FakeChart | undefined,
+    reducedMotion?: boolean,
+  ) => void;
 };
 
 type FakeEvent = { preventDefault: () => void };
@@ -159,9 +177,11 @@ class FakeDocument {
       'error-rate',
       'last-collected-at',
       'request-chart',
+      'chart-state',
     ].forEach((id) => this.elements.set(id, new FakeElement('div', id)));
     this.getElementById('dashboard-view').hidden = true;
     this.getElementById('range-select').value = '24h';
+    this.getElementById('chart-state').hidden = true;
   }
 
   getElementById(id: string): FakeElement {
@@ -174,6 +194,19 @@ class FakeDocument {
 
   createElementNS(_namespace: string, tagName: string): FakeElement {
     return new FakeElement(tagName);
+  }
+}
+
+class FakeChart {
+  static instances: FakeChart[] = [];
+  destroyed = false;
+
+  constructor(readonly canvas: FakeElement, readonly config: ChartConfig) {
+    FakeChart.instances.push(this);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
   }
 }
 
@@ -471,6 +504,10 @@ describe('Dashboard static helpers', () => {
 });
 
 describe('Dashboard mounted behavior', () => {
+  beforeEach(() => {
+    FakeChart.instances = [];
+  });
+
   it('로그인 성공 뒤 늦게 도착한 session 실패가 Dashboard를 덮어쓰지 않는다', async () => {
     const document = new FakeDocument();
     const initialSession = deferred<FakeResponse>();
@@ -564,7 +601,7 @@ describe('Dashboard mounted behavior', () => {
     expect(document.getElementById('range-requests').textContent).toBe('90');
   });
 
-  it('단일 point를 marker와 날짜·count 접근성 정보로 표시한다', async () => {
+  it('단일 point와 기간·합계·시점 수 접근성 정보를 canvas에 표시한다', async () => {
     const document = new FakeDocument();
     const fetchFn: FetchFn = async (url) =>
       url.endsWith('/session')
@@ -580,14 +617,240 @@ describe('Dashboard mounted behavior', () => {
             ]),
           );
 
-    mount(document, fetchFn);
+    mount(document, fetchFn, () => FakeChart, true);
     await settleAsyncWork();
 
     const chart = document.getElementById('request-chart');
-    expect(chart.children.some(({ tagName }) => tagName === 'circle')).toBe(
-      true,
+    expect(FakeChart.instances).toHaveLength(1);
+    expect(FakeChart.instances[0].canvas).toBe(chart);
+    expect(FakeChart.instances[0].config.data.datasets[0].data).toEqual([
+      { x: 1790694000000, y: 3 },
+    ]);
+    expect(FakeChart.instances[0].config.options.animation).toBe(false);
+    expect(chart.attributes.get('aria-label')).toBe(
+      '최근 24시간: 요청 3건, 오류 0건, 1개 시점',
     );
-    expect(chart.attributes.get('aria-label')).toContain('2026-09-30');
-    expect(chart.attributes.get('aria-label')).toContain('3');
+    expect(chart.hidden).toBe(false);
+    expect(document.getElementById('chart-state').hidden).toBe(true);
+  });
+
+  it('새로고침과 빈 응답 전 이전 차트를 제거하고 빈 상태를 표시한다', async () => {
+    const document = new FakeDocument();
+    let series: SeriesPoint[] = [
+      { start: '2026-10-01T00:00:00+09:00', requestCount: 12, errorCount: 2 },
+    ];
+    const fetchFn: FetchFn = async (url) =>
+      url.endsWith('/session')
+        ? response(200)
+        : response(200, metricsPayload(12, series));
+
+    mount(document, fetchFn, () => FakeChart, false);
+    await settleAsyncWork();
+    expect(FakeChart.instances).toHaveLength(1);
+
+    await document.getElementById('refresh-button').dispatch('click');
+    expect(FakeChart.instances).toHaveLength(2);
+    expect(FakeChart.instances[0].destroyed).toBe(true);
+    expect(FakeChart.instances[1].destroyed).toBe(false);
+
+    series = [];
+    await document.getElementById('refresh-button').dispatch('click');
+    expect(FakeChart.instances).toHaveLength(2);
+    expect(FakeChart.instances[1].destroyed).toBe(true);
+    expect(document.getElementById('request-chart').hidden).toBe(true);
+    expect(document.getElementById('chart-state').hidden).toBe(false);
+    expect(document.getElementById('chart-state').textContent).toBe(
+      '선택 기간에 수집된 데이터가 없습니다.',
+    );
+  });
+
+  it.each(['missing', 'throwing'])(
+    '%s 차트 실패 중 요약을 갱신하고 새로고침으로 복구한다',
+    async (failure) => {
+      const document = new FakeDocument();
+      let available = false;
+      class ThrowingChart extends FakeChart {
+        constructor(canvas: FakeElement, config: ChartConfig) {
+          if (!available) {
+            throw new Error('chart construction failed');
+          }
+          super(canvas, config);
+        }
+      }
+      const resolveChartConstructor = () =>
+        failure === 'throwing'
+          ? ThrowingChart
+          : available
+          ? FakeChart
+          : undefined;
+      const fetchFn: FetchFn = async (url) =>
+        url.endsWith('/session')
+          ? response(200)
+          : response(
+              200,
+              metricsPayload(1234, [
+                {
+                  start: '2026-10-01T00:00:00+09:00',
+                  requestCount: 1234,
+                  errorCount: 2,
+                },
+              ]),
+            );
+
+      mount(document, fetchFn, resolveChartConstructor, false);
+      await settleAsyncWork();
+      expect(document.getElementById('range-requests').textContent).toBe(
+        '1,234',
+      );
+      expect(document.getElementById('status-message').textContent).toBe('');
+      expect(document.getElementById('request-chart').hidden).toBe(true);
+      expect(document.getElementById('chart-state').hidden).toBe(false);
+      expect(document.getElementById('chart-state').textContent).toBe(
+        '차트를 표시하지 못했습니다. 새로고침해 주세요.',
+      );
+      expect(FakeChart.instances).toHaveLength(0);
+
+      available = true;
+      await expect(
+        document.getElementById('refresh-button').dispatch('click'),
+      ).resolves.toBeUndefined();
+      expect(FakeChart.instances).toHaveLength(1);
+      expect(document.getElementById('request-chart').hidden).toBe(false);
+      expect(document.getElementById('chart-state').hidden).toBe(true);
+      expect(document.getElementById('chart-state').textContent).toBe('');
+    },
+  );
+
+  it('logout과 세션 만료 시 현재 차트를 제거한다', async () => {
+    const document = new FakeDocument();
+    let expired = false;
+    const fetchFn: FetchFn = async (url) =>
+      url.endsWith('/session') || url.endsWith('/logout')
+        ? response(200)
+        : expired
+        ? response(401)
+        : response(
+            200,
+            metricsPayload(3, [
+              {
+                start: '2026-10-01T00:00:00+09:00',
+                requestCount: 3,
+                errorCount: 0,
+              },
+            ]),
+          );
+    mount(document, fetchFn, () => FakeChart, false);
+    await settleAsyncWork();
+    expect(FakeChart.instances).toHaveLength(1);
+    await document.getElementById('logout-button').dispatch('click');
+    expect(FakeChart.instances[0].destroyed).toBe(true);
+    expect(document.getElementById('dashboard-view').hidden).toBe(true);
+
+    await document.getElementById('login-form').dispatch('submit');
+    expect(FakeChart.instances).toHaveLength(2);
+    expired = true;
+    await document.getElementById('refresh-button').dispatch('click');
+    expect(FakeChart.instances[1].destroyed).toBe(true);
+    expect(document.getElementById('dashboard-view').hidden).toBe(true);
+  });
+});
+
+describe('Dashboard chart renderer', () => {
+  it('잘못된 timestamp만 있는 응답은 빈 상태이며 destroy는 반복 호출할 수 있다', () => {
+    const document = new FakeDocument();
+    const renderer = createChartRenderer(() => FakeChart, false);
+    const canvas = document.getElementById('request-chart');
+    const state = document.getElementById('chart-state');
+    renderer.render(
+      canvas,
+      state,
+      [{ start: '2026-10-01T00:00:00+09:00', requestCount: 3, errorCount: 1 }],
+      '7d',
+    );
+    const chart = FakeChart.instances[FakeChart.instances.length - 1];
+    expect(canvas.attributes.get('aria-label')).toBe(
+      '최근 7일: 요청 3건, 오류 1건, 1개 시점',
+    );
+    renderer.render(
+      canvas,
+      state,
+      [{ start: 'invalid', requestCount: 100, errorCount: 2 }],
+      '7d',
+    );
+    expect(chart.destroyed).toBe(true);
+    expect(canvas.hidden).toBe(true);
+    expect(state.textContent).toBe('선택 기간에 수집된 데이터가 없습니다.');
+    expect(() => {
+      renderer.destroy();
+      renderer.destroy();
+    }).not.toThrow();
+  });
+});
+
+describe('Dashboard static markup', () => {
+  it('브라우저 bootstrap은 최신 Chart constructor와 reduced motion 설정을 전달한다', async () => {
+    FakeChart.instances = [];
+    const document = new FakeDocument();
+    let ready = () => undefined;
+    const window = {
+      document,
+      Chart: undefined as typeof FakeChart | undefined,
+      matchMedia: (query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+      }),
+      fetch: async (url: string) =>
+        url.endsWith('/session')
+          ? response(200)
+          : response(
+              200,
+              metricsPayload(3, [
+                {
+                  start: '2026-10-01T00:00:00+09:00',
+                  requestCount: 3,
+                  errorCount: 0,
+                },
+              ]),
+            ),
+      addEventListener: (_type: string, listener: () => undefined) => {
+        ready = listener;
+      },
+    };
+    runInNewContext(
+      readFileSync(
+        resolve(__dirname, '../../../dashboard/dashboard.js'),
+        'utf8',
+      ),
+      { window, Intl },
+    );
+    ready();
+    await settleAsyncWork();
+    expect(document.getElementById('chart-state').textContent).toBe(
+      '차트를 표시하지 못했습니다. 새로고침해 주세요.',
+    );
+    window.Chart = FakeChart;
+    await document.getElementById('refresh-button').dispatch('click');
+    expect(FakeChart.instances).toHaveLength(1);
+    expect(FakeChart.instances[0].config.options.animation).toBe(false);
+  });
+
+  it('고정 버전 CDN과 SRI를 앱 script 앞에 defer로 로드하고 접근성 canvas와 상태를 제공한다', () => {
+    const html = readFileSync(
+      resolve(__dirname, '../../../dashboard/index.html'),
+      'utf8',
+    );
+    const cdn =
+      'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js';
+    expect(html).toContain(cdn);
+    expect(html).toContain(
+      'integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"',
+    );
+    expect(html).toContain('crossorigin="anonymous"');
+    expect(html).toMatch(/src="https:\/\/cdn\.jsdelivr\.net[^>]+defer\s*>/);
+    expect(html.indexOf(cdn)).toBeLessThan(
+      html.indexOf('/dashboard/dashboard.js'),
+    );
+    expect(html).toContain('<script src="/dashboard/dashboard.js" defer>');
+    expect(html).toMatch(/<canvas\s+id="request-chart"\s+role="img"/);
+    expect(html).toContain('id="chart-state"');
   });
 });

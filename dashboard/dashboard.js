@@ -5,14 +5,23 @@
   }
   if (root && root.document) {
     root.addEventListener("DOMContentLoaded", function () {
-      dashboard.mount(root.document, root.fetch.bind(root));
+      dashboard.mount(
+        root.document,
+        root.fetch.bind(root),
+        function () {
+          return root.Chart;
+        },
+        Boolean(
+          root.matchMedia &&
+            root.matchMedia("(prefers-reduced-motion: reduce)").matches
+        )
+      );
     });
   }
 })(typeof window !== "undefined" ? window : undefined, function () {
   "use strict";
 
   const API_BASE = "/api/dashboard";
-  const SVG_NS = "http://www.w3.org/2000/svg";
 
   function safeNumber(value) {
     const number = Number(value);
@@ -146,57 +155,70 @@
     };
   }
 
-  function buildLinePath(series, width, height) {
-    return buildChartPoints(series, width, height)
-      .map(function (point, index) {
-        return `${
-          index === 0 ? "M" : "L"
-        } ${formatCoordinate(point.x)} ${formatCoordinate(point.y)}`;
-      })
-      .join(" ");
-  }
+  function createChartRenderer(resolveChartConstructor, reducedMotion) {
+    let chart = null;
 
-  function buildChartPoints(series, width, height) {
-    if (!Array.isArray(series) || series.length === 0) {
-      return [];
-    }
-    const counts = series.map(function (point) {
-      return safeNumber(point.requestCount);
-    });
-    const timestamps = series.map(function (point) {
-      return Date.parse(point.start);
-    });
-    const hasValidTimestamps = timestamps.every(Number.isFinite);
-    const firstTimestamp = hasValidTimestamps
-      ? Math.min.apply(null, timestamps)
-      : 0;
-    const lastTimestamp = hasValidTimestamps
-      ? Math.max.apply(null, timestamps)
-      : 0;
-    const max = Math.max.apply(null, counts);
-
-    return series.map(function (point, index) {
-      let x = width / 2;
-      if (series.length > 1) {
-        x =
-          hasValidTimestamps && lastTimestamp > firstTimestamp
-            ? ((timestamps[index] - firstTimestamp) /
-                (lastTimestamp - firstTimestamp)) *
-              width
-            : (index / (series.length - 1)) * width;
+    function destroy() {
+      if (chart) {
+        chart.destroy();
+        chart = null;
       }
-      const count = counts[index];
-      return {
-        x: x,
-        y: max === 0 ? height : height - (count / max) * height,
-        start: typeof point.start === "string" ? point.start : "",
-        requestCount: count,
-      };
-    });
-  }
+    }
 
-  function formatCoordinate(value) {
-    return Number(value.toFixed(2)).toString();
+    function render(canvas, stateElement, series, range) {
+      destroy();
+      const points = prepareChartSeries(series);
+      if (points.length === 0) {
+        canvas.hidden = true;
+        stateElement.hidden = false;
+        stateElement.textContent = "선택 기간에 수집된 데이터가 없습니다.";
+        return;
+      }
+
+      const rangeLabels = {
+        "24h": "최근 24시간",
+        "7d": "최근 7일",
+        "30d": "최근 30일",
+        "90d": "최근 90일",
+      };
+      const totals = points.reduce(
+        function (sum, point) {
+          sum.requests += point.requestCount;
+          sum.errors += point.errorCount;
+          return sum;
+        },
+        { requests: 0, errors: 0 }
+      );
+      canvas.setAttribute(
+        "aria-label",
+        `${rangeLabels[range] || "선택 기간"}: 요청 ${formatCount(
+          totals.requests
+        )}건, 오류 ${formatCount(totals.errors)}건, ${formatCount(
+          points.length
+        )}개 시점`
+      );
+
+      try {
+        const ChartConstructor = resolveChartConstructor();
+        if (typeof ChartConstructor !== "function") {
+          throw new Error("Chart.js unavailable");
+        }
+        canvas.hidden = false;
+        chart = new ChartConstructor(
+          canvas,
+          buildChartConfig(series, range, reducedMotion)
+        );
+        stateElement.hidden = true;
+        stateElement.textContent = "";
+      } catch (error) {
+        canvas.hidden = true;
+        stateElement.hidden = false;
+        stateElement.textContent =
+          "차트를 표시하지 못했습니다. 새로고침해 주세요.";
+      }
+    }
+
+    return { render: render, destroy: destroy };
   }
 
   function normalizeMetrics(payload) {
@@ -230,7 +252,7 @@
     };
   }
 
-  function mount(document, fetchFn) {
+  function mount(document, fetchFn, resolveChartConstructor, reducedMotion) {
     const loginView = document.getElementById("login-view");
     const dashboardView = document.getElementById("dashboard-view");
     const loginForm = document.getElementById("login-form");
@@ -239,6 +261,10 @@
     const logoutButton = document.getElementById("logout-button");
     const statusMessage = document.getElementById("status-message");
     const refreshButton = document.getElementById("refresh-button");
+    const chartRenderer = createChartRenderer(
+      resolveChartConstructor,
+      reducedMotion
+    );
     let metricRequestGeneration = 0;
     let authRequestGeneration = 0;
 
@@ -258,6 +284,7 @@
 
     function showLogin(message) {
       metricRequestGeneration += 1;
+      chartRenderer.destroy();
       loginView.hidden = false;
       dashboardView.hidden = true;
       setStatus(message || "", Boolean(message));
@@ -309,57 +336,11 @@
           ? collected.toLocaleString("ko-KR")
           : "수집 내역 없음";
 
-      renderChart(document, metrics.series);
-    }
-
-    function renderChart(document, series) {
-      const svg = document.getElementById("request-chart");
-      const width = 800;
-      const height = 240;
-      svg.replaceChildren();
-      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-
-      const pathValue = buildLinePath(series, width, height);
-      if (!pathValue) {
-        const message = document.createElementNS(SVG_NS, "text");
-        message.setAttribute("x", String(width / 2));
-        message.setAttribute("y", String(height / 2));
-        message.setAttribute("text-anchor", "middle");
-        message.textContent = "선택 기간에 수집된 데이터가 없습니다.";
-        svg.appendChild(message);
-        svg.setAttribute("aria-label", "수집 데이터 없음");
-        return;
-      }
-
-      const path = document.createElementNS(SVG_NS, "path");
-      path.setAttribute("d", pathValue);
-      path.setAttribute("class", "request-line");
-      path.setAttribute("vector-effect", "non-scaling-stroke");
-      svg.appendChild(path);
-
-      const points = buildChartPoints(series, width, height);
-      points.forEach(function (point) {
-        const marker = document.createElementNS(SVG_NS, "circle");
-        marker.setAttribute("cx", formatCoordinate(point.x));
-        marker.setAttribute("cy", formatCoordinate(point.y));
-        marker.setAttribute("r", "4");
-        marker.setAttribute("class", "request-point");
-        const title = document.createElementNS(SVG_NS, "title");
-        title.textContent = `${point.start || "시각 정보 없음"}: ${formatCount(
-          point.requestCount
-        )}건`;
-        marker.appendChild(title);
-        svg.appendChild(marker);
-      });
-      svg.setAttribute(
-        "aria-label",
-        `선택 기간 요청 추이: ${points
-          .map(function (point) {
-            return `${
-              point.start || "시각 정보 없음"
-            } ${formatCount(point.requestCount)}건`;
-          })
-          .join(", ")}`
+      chartRenderer.render(
+        document.getElementById("request-chart"),
+        document.getElementById("chart-state"),
+        metrics.series,
+        rangeSelect.value
       );
     }
 
@@ -483,7 +464,7 @@
     formatChartTimestamp: formatChartTimestamp,
     calculateErrorRate: calculateErrorRate,
     buildChartConfig: buildChartConfig,
-    buildLinePath: buildLinePath,
+    createChartRenderer: createChartRenderer,
     normalizeMetrics: normalizeMetrics,
     mount: mount,
   };

@@ -229,33 +229,26 @@ button.secondary:hover {
   gap: 6px;
 }
 
+.chart-container {
+  position: relative;
+  height: 360px;
+  margin-top: 28px;
+  overflow: hidden;
+}
+
 #request-chart {
   display: block;
-  width: 100%;
-  height: 280px;
-  margin-top: 28px;
-  overflow: visible;
-  border-bottom: 1px solid #e7ecf3;
+  max-width: 100%;
+}
+
+.chart-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
   color: #78869a;
-}
-
-.request-line {
-  fill: none;
-  stroke: #305cff;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3;
-}
-
-.request-point {
-  fill: #fff;
-  stroke: #305cff;
-  stroke-width: 3;
-}
-
-#request-chart text {
-  fill: #78869a;
-  font-size: 16px;
+  text-align: center;
 }
 
 .collected-at {
@@ -320,7 +313,7 @@ button.secondary:hover {
     margin-top: 16px;
   }
 
-  #request-chart {
-    height: 220px;
+  .chart-container {
+    height: 280px;
   }
 }

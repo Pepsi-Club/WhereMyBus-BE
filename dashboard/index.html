@@ -6,6 +6,12 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>버스어디 API Dashboard</title>
     <link rel="stylesheet" href="/dashboard/dashboard.css" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+      integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+      crossorigin="anonymous"
+      defer
+    ></script>
     <script src="/dashboard/dashboard.js" defer></script>
   </head>
   <body>
@@ -93,12 +99,20 @@
               </select>
             </label>
           </div>
-          <svg
-            id="request-chart"
-            role="img"
-            aria-labelledby="chart-title"
-            preserveAspectRatio="none"
-          ></svg>
+          <div class="chart-container">
+            <canvas
+              id="request-chart"
+              role="img"
+              aria-label="선택 기간 요청 및 오류 추이"
+            ></canvas>
+            <p
+              id="chart-state"
+              class="chart-state"
+              role="status"
+              aria-live="polite"
+              hidden
+            ></p>
+          </div>
           <p class="collected-at">
             마지막 수집: <time id="last-collected-at">수집 내역 없음</time>
           </p>

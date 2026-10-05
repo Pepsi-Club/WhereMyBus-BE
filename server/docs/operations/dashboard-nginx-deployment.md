@@ -85,6 +85,32 @@ location ^~ /api/dashboard/ {
 - trailing slash가 없으면 원래 `/api/dashboard/...` URI가 NestJS로 전달된다.
 - static location과 API location의 namespace가 달라 서로 가로채지 않는다.
 
+### Chart.js CDN과 CSP
+
+Dashboard는 다음 고정 버전의 Chart.js UMD 파일을 앱 script보다 먼저 `defer`로 로드한다.
+
+- URL: `https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js`
+- SRI: `sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ`
+- 외부 script에는 `crossorigin="anonymous"`를 유지한다.
+
+새 CSP를 설정할 때 HTTPS `server` block에 다음 예시를 적용할 수 있다.
+
+```nginx
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+```
+
+이미 CSP가 있으면 기존 `script-src`에 `https://cdn.jsdelivr.net`을 병합한다. 별도의 CSP header를 추가하면 두 정책을 모두 만족해야 하므로 기존 정책이 계속 CDN을 차단할 수 있다. `add_header`가 있는 하위 location은 상위 header를 상속하지 않을 수 있으므로 캐시 설정을 포함해 `nginx -T`와 실제 HTML 응답 header를 확인한다.
+
+CDN 버전을 변경할 때 다운로드한 파일의 SHA-384를 계산하고 HTML의 SRI와 대조한다.
+
+```bash
+curl --fail --silent --show-error https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+계산 결과에 `sha384-`를 붙였을 때 위 SRI와 정확히 같아야 한다. 브라우저 개발자 도구의 Network에서도 script가 성공적으로 로드되는지 확인한다. CSP 차단 시 console에 `Refused to load the script`와 `script-src` 관련 오류가, SRI 불일치 시 `integrity` digest 오류가, CDN 접속 실패 시 script network 오류가 나타난다.
+
+라이브러리가 로드되지 않아도 요약 카드는 갱신되고 차트 영역에는 `차트를 표시하지 못했습니다. 새로고침해 주세요.`가 표시된다. CDN/CSP 문제를 해결하고 페이지를 다시 로드한다. 라이브러리가 이미 복구된 페이지에서는 Dashboard의 새로고침 버튼으로 차트를 다시 생성할 수 있다.
+
 ## 4. HTTP 차단과 HTTPS
 
 인증 cookie가 `Secure`이므로 Dashboard는 HTTPS에서만 정상 동작한다.
