@@ -48,6 +48,8 @@ type ChartConfig = {
     scales: {
       x: {
         type: string;
+        min?: number;
+        max?: number;
         ticks: {
           autoSkip: boolean;
           maxRotation: number;
@@ -250,6 +252,21 @@ async function settleAsyncWork(): Promise<void> {
 }
 
 describe('Dashboard static helpers', () => {
+  it.each<[ChartRange, number, number]>([
+    ['24h', 1790778600000, 1790782200000],
+    ['7d', 1790778600000, 1790782200000],
+    ['30d', 1790737200000, 1790823600000],
+    ['90d', 1790737200000, 1790823600000],
+  ])('%s 단일 시점 축을 집계 간격 안에 표시한다', (range, min, max) => {
+    const config = buildChartConfig(
+      [{ start: '2026-10-01T00:00:00+09:00', requestCount: 3, errorCount: 0 }],
+      range,
+      false,
+    );
+    expect(config.options.scales.x).toMatchObject({ type: 'linear', min, max });
+    expect(config.data.datasets[0].data).toEqual([{ x: 1790780400000, y: 3 }]);
+  });
+
   it('큰 count를 한국어 locale 숫자로 표시한다', () => {
     expect(formatCount(1234567)).toBe('1,234,567');
   });
@@ -382,6 +399,10 @@ describe('Dashboard static helpers', () => {
       { x: 1793286000000, y: 3 },
     ]);
     expect(config.options.animation).toEqual({ duration: 250 });
+    expect(config.options.scales.x).toMatchObject({
+      min: 1790737200000,
+      max: 1793329200000,
+    });
     expect(config.options.scales.x.ticks.callback(1790780400000)).toBe(
       '10. 1.',
     );
@@ -506,6 +527,54 @@ describe('Dashboard static helpers', () => {
 describe('Dashboard mounted behavior', () => {
   beforeEach(() => {
     FakeChart.instances = [];
+  });
+
+  it('중복 login을 보내지 않고 auth 쿠키 적용 후 logout 쿠키를 지운다', async () => {
+    const document = new FakeDocument();
+    const auth = deferred<FakeResponse>();
+    const logout = deferred<FakeResponse>();
+    const requests: string[] = [];
+    let cookie = '';
+    const fetchFn: FetchFn = async (url) => {
+      if (url.endsWith('/session')) return response(401);
+      requests.push(url);
+      if (url.endsWith('/auth')) {
+        const result = await auth.promise;
+        cookie = 'authenticated';
+        return result;
+      }
+      if (url.endsWith('/logout')) {
+        const result = await logout.promise;
+        cookie = '';
+        return result;
+      }
+      return response(200, metricsPayload(7));
+    };
+    mount(document, fetchFn);
+    await settleAsyncWork();
+    document.getElementById('access-code').value = 'developer-code-1234';
+    const login = document.getElementById('login-form').dispatch('submit');
+    const duplicate = document.getElementById('login-form').dispatch('submit');
+    await settleAsyncWork();
+    expect(requests).toEqual(['/api/dashboard/auth']);
+    const signingOut = document
+      .getElementById('logout-button')
+      .dispatch('click');
+    await document.getElementById('login-form').dispatch('submit');
+    await settleAsyncWork();
+    expect(requests).toEqual(['/api/dashboard/auth']);
+    auth.resolve(response(201));
+    await settleAsyncWork();
+    expect(cookie).toBe('authenticated');
+    expect(requests).toEqual(['/api/dashboard/auth', '/api/dashboard/logout']);
+    logout.resolve(response(201));
+    await Promise.all([login, duplicate, signingOut]);
+    expect(cookie).toBe('');
+    expect(document.getElementById('dashboard-view').hidden).toBe(true);
+    expect(document.getElementById('access-code').value).toBe('');
+    expect(document.getElementById('status-message').textContent).toBe(
+      '로그아웃했습니다.',
+    );
   });
 
   it('로그인 성공 뒤 늦게 도착한 session 실패가 Dashboard를 덮어쓰지 않는다', async () => {

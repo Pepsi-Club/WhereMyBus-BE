@@ -318,6 +318,7 @@ location = /dashboard/index.html {
 4. `sudo nginx -t`
 5. 성공 시 Nginx reload
 6. Dashboard static 파일은 별도 백업 후 제거
-7. metric 수집도 중단하려면 metric module 설정을 비활성화
+7. `DASHBOARD_ENABLED=false`는 Dashboard 인증·조회 endpoint만 비활성화하며 bus API metric 수집은 계속된다. 현재 metric 수집을 끄는 환경변수나 module 설정은 없다.
+8. metric 수집도 중단해야 한다면 metric 도입 전 검증된 배포 revision으로 애플리케이션을 되돌린 뒤 기존 배포 절차로 build 및 PM2 reload를 수행한다. 배포 revision을 유지해야 한다면 별도 코드 변경으로 `BusInfoService`의 metric 의존성·constructor 주입·기록 호출과 `BusInfoModule`의 `BusApiMetricModule` import를 제거하고 관련 테스트 및 build 검증 후 배포한다.
 
 MongoDB metric 문서는 보존 기간까지 유지한다. 즉시 삭제는 별도 승인 후 수행한다.

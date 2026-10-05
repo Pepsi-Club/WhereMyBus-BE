@@ -130,12 +130,25 @@ describe('BusApiMetricService', () => {
         ({ bucketStart }) => bucketStart.getTime() === firstMinute,
       ),
     ).toBe(false);
+    expect(loggerError).toHaveBeenCalledTimes(1);
+  });
+
+  it('저장된 오래된 bucket을 제거할 때 유실 오류를 기록하지 않는다', async () => {
+    const firstMinute = Date.parse('2026-09-30T00:00:00.000Z');
+    for (let minute = 0; minute < 60; minute += 1) {
+      service.recordRequest(new Date(firstMinute + minute * 60_000));
+    }
+    await service.flushCompletedBuckets(new Date(firstMinute + 60 * 60_000));
+    service.recordRequest(new Date(firstMinute + 60 * 60_000));
+    await service.flushCompletedBuckets(new Date(firstMinute + 61 * 60_000));
+    expect(repository.saved).toHaveLength(61);
+    expect(loggerError).not.toHaveBeenCalled();
   });
 
   it('shutdown은 현재 minute의 남은 요청을 저장한다', async () => {
     service.recordRequest(new Date('2026-09-30T00:00:30.000Z'));
 
-    await service.onApplicationShutdown();
+    await service.beforeApplicationShutdown();
 
     expect(repository.saved).toHaveLength(1);
     expect(repository.saved[0]).toMatchObject({
@@ -190,7 +203,7 @@ describe('BusApiMetricService', () => {
     await gate.started;
     service.recordRequest(new Date('2026-09-30T00:01:10.000Z'));
 
-    const shutdown = service.onApplicationShutdown();
+    const shutdown = service.beforeApplicationShutdown();
     gate.release();
     await Promise.all([regularFlush, shutdown]);
 
@@ -203,7 +216,7 @@ describe('BusApiMetricService', () => {
   it('같은 worker가 같은 minute에 재시작해도 이전 count를 덮어쓰지 않는다', async () => {
     service.recordRequest(new Date('2026-09-30T00:00:10.000Z'));
     service.recordRequest(new Date('2026-09-30T00:00:20.000Z'));
-    await service.onApplicationShutdown();
+    await service.beforeApplicationShutdown();
 
     const restartedService = new BusApiMetricService(
       repository as unknown as BusApiMetricRepository,
@@ -213,7 +226,7 @@ describe('BusApiMetricService', () => {
       }),
     );
     restartedService.recordRequest(new Date('2026-09-30T00:00:40.000Z'));
-    await restartedService.onApplicationShutdown();
+    await restartedService.beforeApplicationShutdown();
 
     expect(
       repository.saved.reduce(

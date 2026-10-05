@@ -31,7 +31,9 @@ describe('DashboardLoginAttemptLimiter', () => {
     const limiter = createLimiter();
 
     limiter.recordFailure('active-ip', new Date(5 * second));
-    limiter.recordFailure('expired-ip', new Date(0));
+    for (let index = 0; index < 9_999; index += 1) {
+      limiter.recordFailure(`expired-ip-${index}`, new Date(0));
+    }
     limiter.recordFailure('new-ip', new Date(11 * second));
 
     expect(limiter.hasReachedLimit('active-ip', new Date(11 * second))).toBe(

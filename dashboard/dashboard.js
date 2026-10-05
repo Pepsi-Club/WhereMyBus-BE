@@ -73,6 +73,10 @@
 
   function buildChartConfig(series, range, reducedMotion) {
     const points = prepareChartSeries(series);
+    const halfInterval =
+      (range === "30d" || range === "90d"
+        ? 24 * 60 * 60 * 1000
+        : 60 * 60 * 1000) / 2;
     const pointRadius = points.length <= 30 ? 3 : 0;
     const rateFormatter = new Intl.NumberFormat("ko-KR", {
       style: "percent",
@@ -141,6 +145,10 @@
         scales: {
           x: {
             type: "linear",
+            min: points.length ? points[0].timestamp - halfInterval : undefined,
+            max: points.length
+              ? points[points.length - 1].timestamp + halfInterval
+              : undefined,
             ticks: {
               autoSkip: true,
               maxRotation: 0,
@@ -281,6 +289,17 @@
     );
     let metricRequestGeneration = 0;
     let authRequestGeneration = 0;
+    let cookieMutationQueue = Promise.resolve();
+    let loginPending = false;
+    let logoutPending = false;
+
+    function mutateSessionCookie(path, options) {
+      const operation = cookieMutationQueue.then(function () {
+        return apiFetch(path, options);
+      });
+      cookieMutationQueue = operation.catch(function () {});
+      return operation;
+    }
 
     function beginAuthRequest() {
       authRequestGeneration += 1;
@@ -413,18 +432,23 @@
 
     loginForm.addEventListener("submit", async function (event) {
       event.preventDefault();
+      if (loginPending || logoutPending) {
+        return;
+      }
+      loginPending = true;
+      loginForm.setAttribute("aria-busy", "true");
       const generation = beginAuthRequest();
       const code = accessCode.value;
       setStatus("인증 중입니다.", false);
       try {
-        const response = await apiFetch("/auth", {
+        const response = await mutateSessionCookie("/auth", {
           method: "POST",
           body: JSON.stringify({ code: code }),
         });
+        accessCode.value = "";
         if (!isCurrentAuthRequest(generation)) {
           return;
         }
-        accessCode.value = "";
         if (!response.ok) {
           setStatus(
             response.status === 429
@@ -444,16 +468,26 @@
             true
           );
         }
+      } finally {
+        loginPending = false;
+        accessCode.value = "";
+        loginForm.setAttribute("aria-busy", "false");
       }
     });
 
     rangeSelect.addEventListener("change", loadMetrics);
     refreshButton.addEventListener("click", loadMetrics);
     logoutButton.addEventListener("click", async function () {
+      if (logoutPending) {
+        return;
+      }
+      logoutPending = true;
       const generation = beginAuthRequest();
       setStatus("로그아웃 중입니다.", false);
       try {
-        const response = await apiFetch("/logout", { method: "POST" });
+        const response = await mutateSessionCookie("/logout", {
+          method: "POST",
+        });
         if (!isCurrentAuthRequest(generation)) {
           return;
         }
@@ -466,6 +500,8 @@
         if (isCurrentAuthRequest(generation)) {
           setStatus("로그아웃하지 못했습니다. 잠시 후 다시 시도하세요.", true);
         }
+      } finally {
+        logoutPending = false;
       }
     });
 

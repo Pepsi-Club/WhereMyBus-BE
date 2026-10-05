@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import * as request from 'supertest';
+import { createConnection } from 'mongoose';
+import { BusApiMetricService } from '../src/bus-api-metric/bus-api-metric.service';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -31,8 +33,11 @@ describe('AppController (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-    await mongoServer.stop();
+    try {
+      await app?.close();
+    } finally {
+      await mongoServer?.stop();
+    }
     delete process.env.MONGO;
     delete process.env.DASHBOARD_ENABLED;
     delete process.env.DASHBOARD_ACCESS_CODE;
@@ -59,5 +64,28 @@ describe('AppController (e2e)', () => {
       .send({ code: 'developer-code-1234' })
       .expect(404);
     configService.set('DASHBOARD_ENABLED', 'true');
+  });
+
+  it('실제 AppModule 종료는 Mongo 연결이 닫히기 전에 현재 minute를 저장한다', async () => {
+    const at = new Date();
+    const bucketStart = new Date(Math.floor(at.getTime() / 60_000) * 60_000);
+    const metrics = app.get(BusApiMetricService);
+    metrics.recordRequest(at);
+    metrics.recordError(at);
+    await app.close();
+
+    const observer = await createConnection(mongoServer.getUri()).asPromise();
+    try {
+      const saved = await observer.db
+        .collection('bus_api_metrics')
+        .findOne({ bucketStart });
+      expect(saved).toMatchObject({
+        bucketStart,
+        requestCount: 1,
+        errorCount: 1,
+      });
+    } finally {
+      await observer.close();
+    }
   });
 });

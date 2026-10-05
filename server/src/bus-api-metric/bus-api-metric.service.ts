@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
+import { BeforeApplicationShutdown, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
@@ -17,7 +17,7 @@ const DEFAULT_RETENTION_DAYS = 400;
 const MAX_PENDING_BUCKETS = 60;
 
 @Injectable()
-export class BusApiMetricService implements OnApplicationShutdown {
+export class BusApiMetricService implements BeforeApplicationShutdown {
   private readonly logger = new Logger(BusApiMetricService.name);
   private readonly buckets = new Map<number, MutableBucket>();
   private readonly instanceId: string;
@@ -66,7 +66,7 @@ export class BusApiMetricService implements OnApplicationShutdown {
     await this.enqueueFlush(this.minuteStart(now));
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  async beforeApplicationShutdown(): Promise<void> {
     await this.enqueueFlush(Number.POSITIVE_INFINITY);
   }
 
@@ -95,12 +95,18 @@ export class BusApiMetricService implements OnApplicationShutdown {
     );
     while (sortedKeys.length > MAX_PENDING_BUCKETS) {
       const droppedKey = sortedKeys.shift();
+      const bucket = this.buckets.get(droppedKey);
       this.buckets.delete(droppedKey);
-      this.logger.error(
-        `Dropped oldest bus API metric bucket: ${new Date(
-          droppedKey,
-        ).toISOString()}`,
-      );
+      if (
+        bucket.requestCount !== bucket.flushedRequestCount ||
+        bucket.errorCount !== bucket.flushedErrorCount
+      ) {
+        this.logger.error(
+          `Dropped oldest bus API metric bucket: ${new Date(
+            droppedKey,
+          ).toISOString()}`,
+        );
+      }
     }
   }
 
