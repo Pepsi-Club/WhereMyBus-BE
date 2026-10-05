@@ -5,6 +5,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import * as request from 'supertest';
 import { createConnection } from 'mongoose';
 import { BusApiMetricService } from '../src/bus-api-metric/bus-api-metric.service';
+import { SEOUL_BUS_ARRIVAL_METRIC } from '../src/bus-api-metric/bus-api-metric.dimension';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -70,17 +71,21 @@ describe('AppController (e2e)', () => {
     const at = new Date();
     const bucketStart = new Date(Math.floor(at.getTime() / 60_000) * 60_000);
     const metrics = app.get(BusApiMetricService);
-    metrics.recordRequest(at);
-    metrics.recordError(at);
+    metrics.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, at);
+    metrics.recordError(SEOUL_BUS_ARRIVAL_METRIC, at);
     await app.close();
 
     const observer = await createConnection(mongoServer.getUri()).asPromise();
     try {
-      const saved = await observer.db
-        .collection('bus_api_metrics')
-        .findOne({ bucketStart });
+      const saved = await observer.db.collection('bus_api_metrics').findOne({
+        bucketStart,
+        provider: 'seoul-bus',
+        operation: 'bus-arrival',
+      });
       expect(saved).toMatchObject({
         bucketStart,
+        provider: 'seoul-bus',
+        operation: 'bus-arrival',
         requestCount: 1,
         errorCount: 1,
       });

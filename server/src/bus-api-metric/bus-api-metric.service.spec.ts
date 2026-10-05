@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { BusApiMetricRepository } from './bus-api-metric.repository';
 import { BusApiMetricService } from './bus-api-metric.service';
 import { StoredMetricBucket } from './bus-api-metric.repository';
+import { SEOUL_BUS_ARRIVAL_METRIC } from './bus-api-metric.dimension';
 
 class InMemoryMetricRepository {
   saved: StoredMetricBucket[] = [];
@@ -42,7 +43,9 @@ class InMemoryMetricRepository {
     const index = this.saved.findIndex(
       (saved) =>
         saved.bucketStart.getTime() === copy.bucketStart.getTime() &&
-        saved.instanceId === copy.instanceId,
+        saved.instanceId === copy.instanceId &&
+        saved.provider === copy.provider &&
+        saved.operation === copy.operation,
     );
     if (index >= 0) {
       this.saved[index] = copy;
@@ -82,13 +85,24 @@ describe('BusApiMetricService', () => {
   });
 
   it('같은 minute 요청과 오류를 하나의 bucket으로 저장한다', async () => {
-    service.recordRequest(new Date('2026-09-30T00:00:10.000Z'));
-    service.recordRequest(new Date('2026-09-30T00:00:50.000Z'));
-    service.recordError(new Date('2026-09-30T00:00:10.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:10.000Z'),
+    );
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:50.000Z'),
+    );
+    service.recordError(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:10.000Z'),
+    );
 
     await service.flushCompletedBuckets(new Date('2026-09-30T00:01:00.000Z'));
 
     expect(repository.saved[0]).toMatchObject({
+      provider: 'seoul-bus',
+      operation: 'bus-arrival',
       bucketStart: new Date('2026-09-30T00:00:00.000Z'),
       requestCount: 2,
       errorCount: 1,
@@ -97,9 +111,55 @@ describe('BusApiMetricService', () => {
     expect(repository.saved[0].instanceId).toMatch(/^0:/);
   });
 
+  it('같은 minute의 provider와 operation별 요청 및 오류를 분리한다', async () => {
+    const startedAt = new Date('2026-10-05T00:00:10.000Z');
+    const routeInfo = { provider: 'seoul-bus', operation: 'route-info' };
+    const otherProvider = { provider: 'other-bus', operation: 'bus-arrival' };
+    service.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
+    service.recordRequest(routeInfo, startedAt);
+    service.recordRequest(routeInfo, startedAt);
+    service.recordError(routeInfo, startedAt);
+    service.recordRequest(otherProvider, startedAt);
+
+    await service.flushCompletedBuckets(new Date('2026-10-05T00:01:00.000Z'));
+
+    expect(repository.saved).toHaveLength(3);
+    expect(repository.saved).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'seoul-bus',
+          operation: 'bus-arrival',
+          requestCount: 1,
+          errorCount: 0,
+        }),
+        expect.objectContaining({
+          provider: 'seoul-bus',
+          operation: 'route-info',
+          requestCount: 2,
+          errorCount: 1,
+        }),
+        expect.objectContaining({
+          provider: 'other-bus',
+          operation: 'bus-arrival',
+          requestCount: 1,
+          errorCount: 0,
+        }),
+      ]),
+    );
+    expect(
+      repository.saved.every(
+        ({ bucketStart }) =>
+          bucketStart.toISOString() === '2026-10-05T00:00:00.000Z',
+      ),
+    ).toBe(true);
+  });
+
   it('실패한 write는 다음 flush에서 같은 값으로 재시도한다', async () => {
     repository.failuresRemaining = 1;
-    service.recordRequest(new Date('2026-09-30T00:00:10.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:10.000Z'),
+    );
 
     await expect(
       service.flushCompletedBuckets(new Date('2026-09-30T00:01:00.000Z')),
@@ -116,7 +176,10 @@ describe('BusApiMetricService', () => {
   it('pending bucket 61개가 되면 가장 오래된 bucket만 제거한다', async () => {
     const firstMinute = new Date('2026-09-30T00:00:00.000Z').getTime();
     for (let minute = 0; minute < 61; minute += 1) {
-      service.recordRequest(new Date(firstMinute + minute * 60_000));
+      service.recordRequest(
+        SEOUL_BUS_ARRIVAL_METRIC,
+        new Date(firstMinute + minute * 60_000),
+      );
     }
 
     await service.flushCompletedBuckets(new Date(firstMinute + 62 * 60_000));
@@ -136,17 +199,26 @@ describe('BusApiMetricService', () => {
   it('저장된 오래된 bucket을 제거할 때 유실 오류를 기록하지 않는다', async () => {
     const firstMinute = Date.parse('2026-09-30T00:00:00.000Z');
     for (let minute = 0; minute < 60; minute += 1) {
-      service.recordRequest(new Date(firstMinute + minute * 60_000));
+      service.recordRequest(
+        SEOUL_BUS_ARRIVAL_METRIC,
+        new Date(firstMinute + minute * 60_000),
+      );
     }
     await service.flushCompletedBuckets(new Date(firstMinute + 60 * 60_000));
-    service.recordRequest(new Date(firstMinute + 60 * 60_000));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date(firstMinute + 60 * 60_000),
+    );
     await service.flushCompletedBuckets(new Date(firstMinute + 61 * 60_000));
     expect(repository.saved).toHaveLength(61);
     expect(loggerError).not.toHaveBeenCalled();
   });
 
   it('shutdown은 현재 minute의 남은 요청을 저장한다', async () => {
-    service.recordRequest(new Date('2026-09-30T00:00:30.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:30.000Z'),
+    );
 
     await service.beforeApplicationShutdown();
 
@@ -160,14 +232,14 @@ describe('BusApiMetricService', () => {
 
   it('flush write 중 추가된 오류를 다음 flush에서 누적 저장한다', async () => {
     const startedAt = new Date('2026-09-30T00:00:59.900Z');
-    service.recordRequest(startedAt);
+    service.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
     const gate = repository.blockNextWrite();
 
     const firstFlush = service.flushCompletedBuckets(
       new Date('2026-09-30T00:01:00.000Z'),
     );
     await gate.started;
-    service.recordError(startedAt);
+    service.recordError(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
     gate.release();
     await firstFlush;
     await service.flushCompletedBuckets(new Date('2026-09-30T00:02:00.000Z'));
@@ -181,10 +253,10 @@ describe('BusApiMetricService', () => {
 
   it('이미 flush된 minute의 지연 오류도 기존 요청 수에 누적한다', async () => {
     const startedAt = new Date('2026-09-30T00:00:59.900Z');
-    service.recordRequest(startedAt);
+    service.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
     await service.flushCompletedBuckets(new Date('2026-09-30T00:01:00.000Z'));
 
-    service.recordError(startedAt);
+    service.recordError(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
     await service.flushCompletedBuckets(new Date('2026-09-30T00:02:00.000Z'));
 
     expect(repository.saved).toHaveLength(1);
@@ -195,13 +267,19 @@ describe('BusApiMetricService', () => {
   });
 
   it('진행 중인 flush를 기다린 뒤 shutdown 시 현재 minute까지 저장한다', async () => {
-    service.recordRequest(new Date('2026-09-30T00:00:30.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:30.000Z'),
+    );
     const gate = repository.blockNextWrite();
     const regularFlush = service.flushCompletedBuckets(
       new Date('2026-09-30T00:01:00.000Z'),
     );
     await gate.started;
-    service.recordRequest(new Date('2026-09-30T00:01:10.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:01:10.000Z'),
+    );
 
     const shutdown = service.beforeApplicationShutdown();
     gate.release();
@@ -214,8 +292,14 @@ describe('BusApiMetricService', () => {
   });
 
   it('같은 worker가 같은 minute에 재시작해도 이전 count를 덮어쓰지 않는다', async () => {
-    service.recordRequest(new Date('2026-09-30T00:00:10.000Z'));
-    service.recordRequest(new Date('2026-09-30T00:00:20.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:10.000Z'),
+    );
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:20.000Z'),
+    );
     await service.beforeApplicationShutdown();
 
     const restartedService = new BusApiMetricService(
@@ -225,7 +309,10 @@ describe('BusApiMetricService', () => {
         BUS_API_METRIC_RETENTION_DAYS: '400',
       }),
     );
-    restartedService.recordRequest(new Date('2026-09-30T00:00:40.000Z'));
+    restartedService.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:40.000Z'),
+    );
     await restartedService.beforeApplicationShutdown();
 
     expect(
@@ -241,7 +328,10 @@ describe('BusApiMetricService', () => {
       repository as unknown as BusApiMetricRepository,
       new ConfigService({ BUS_API_METRIC_RETENTION_DAYS: '400' }),
     );
-    service.recordRequest(new Date('2026-09-30T00:00:10.000Z'));
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-09-30T00:00:10.000Z'),
+    );
 
     await service.flushCompletedBuckets(new Date('2026-09-30T00:01:00.000Z'));
 

@@ -3,19 +3,23 @@ import { ConfigService } from '@nestjs/config';
 import { BusApiMetricService } from '../bus-api-metric/bus-api-metric.service';
 import { ResponseData } from './arrival-info.type';
 import { BusInfoService } from './bus-info.service';
+import {
+  BusApiMetricIdentity,
+  SEOUL_BUS_ARRIVAL_METRIC,
+} from '../bus-api-metric/bus-api-metric.dimension';
 
 class RecordingMetricService {
-  requests: Date[] = [];
-  errors: Date[] = [];
+  requests: Array<{ identity: BusApiMetricIdentity; at: Date }> = [];
+  errors: Array<{ identity: BusApiMetricIdentity; at: Date }> = [];
   events: string[] = [];
 
-  recordRequest(at: Date): void {
+  recordRequest(identity: BusApiMetricIdentity, at: Date): void {
     this.events.push('metric');
-    this.requests.push(at);
+    this.requests.push({ identity, at });
   }
 
-  recordError(at: Date): void {
-    this.errors.push(at);
+  recordError(identity: BusApiMetricIdentity, at: Date): void {
+    this.errors.push({ identity, at });
   }
 }
 
@@ -55,6 +59,8 @@ describe('BusInfoService', () => {
 
     expect(recorder.events).toEqual(['metric', 'http']);
     expect(recorder.requests).toHaveLength(1);
+    expect(recorder.requests[0].identity).toBe(SEOUL_BUS_ARRIVAL_METRIC);
+    expect(recorder.requests[0].at).toBeInstanceOf(Date);
     expect(recorder.errors).toHaveLength(0);
   });
 
@@ -73,7 +79,10 @@ describe('BusInfoService', () => {
     await expect(request).rejects.toBe(failure);
     expect(recorder.requests).toHaveLength(1);
     expect(recorder.errors).toHaveLength(1);
-    expect(recorder.errors[0]).toBe(recorder.requests[0]);
+    expect(recorder.requests[0].identity).toBe(SEOUL_BUS_ARRIVAL_METRIC);
+    expect(recorder.errors[0].identity).toBe(SEOUL_BUS_ARRIVAL_METRIC);
+    expect(recorder.errors[0].at).toBe(recorder.requests[0].at);
+    expect(recorder.errors[0].at).toBeInstanceOf(Date);
   });
 
   it('arriveEachBus도 내부 HTTP 요청 한 번만 계측한다', async () => {
@@ -84,6 +93,7 @@ describe('BusInfoService', () => {
     );
 
     expect(recorder.requests).toHaveLength(1);
+    expect(recorder.requests[0].identity).toBe(SEOUL_BUS_ARRIVAL_METRIC);
     expect(recorder.errors).toHaveLength(0);
   });
 });

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { ResponseData } from './arrival-info.type';
 import { BusApiMetricService } from '../bus-api-metric/bus-api-metric.service';
+import { SEOUL_BUS_ARRIVAL_METRIC } from '../bus-api-metric/bus-api-metric.dimension';
 
 @Injectable()
 export class BusInfoService {
@@ -28,12 +29,12 @@ export class BusInfoService {
 
   async arriveStation(arsId: string): Promise<ResponseData> {
     const startedAt = new Date();
-    this.metricRecorder.recordRequest(startedAt);
+    this.metricRecorder.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
     const requestUrl = `${this.apiUrl}?ServiceKey=${this.serviceKey}&arsId=${arsId}&resultType=json`;
     try {
       return (await axios.get(requestUrl)).data;
     } catch (error) {
-      this.metricRecorder.recordError(startedAt);
+      this.metricRecorder.recordError(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
       throw error;
     }
   }
