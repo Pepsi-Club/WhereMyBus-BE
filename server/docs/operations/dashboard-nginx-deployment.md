@@ -239,6 +239,73 @@ Backend에 `/session`이나 `/metrics`만 전달되면 `proxy_pass` trailing sla
 
 ## 12. Dashboard 데이터 검증
 
+### 분류별 저장 계약과 인덱스
+
+MongoDB `WhereMyBus.bus_api_metrics`의 최종 문서는 다음 형태다. `bucketStart`는 UTC 1분 시작 시각이며 `expiresAt`은 보존 기간에 따른 삭제 시각이다.
+
+```javascript
+{
+  _id: ObjectId("<MongoDB 생성 ID>"),
+  bucketStart: ISODate("2026-10-05T00:00:00.000Z"),
+  instanceId: "<프로세스별 ID>",
+  provider: "seoul-bus",
+  operation: "bus-arrival",
+  requestCount: 10,
+  errorCount: 1,
+  expiresAt: ISODate("2027-11-09T00:00:00.000Z")
+}
+```
+
+초기 분류는 `provider=seoul-bus`(서울 버스), `operation=bus-arrival`(버스 도착 정보)다. 이 분류에 속하는 버스 API 호출과 실패를 기록하며 요청이 없는 분에는 문서를 만들지 않는다. 요일은 문서에 저장하지 않고 조회 시 `Asia/Seoul` 기준으로 계산한다.
+
+`_id_` 기본 인덱스 외에 다음 네 인덱스를 유지한다.
+
+| 이름                               | 키                                                             | 옵션                    |
+| ---------------------------------- | -------------------------------------------------------------- | ----------------------- |
+| `bucket_instance_dimension_unique` | `{ bucketStart: 1, instanceId: 1, provider: 1, operation: 1 }` | `unique: true`          |
+| `metric_dimension_bucket_start`    | `{ provider: 1, operation: 1, bucketStart: 1 }`                | 없음                    |
+| `metric_expiry_ttl`                | `{ expiresAt: 1 }`                                             | `expireAfterSeconds: 0` |
+| `metric_bucket_start`              | `{ bucketStart: 1 }`                                           | 없음                    |
+
+이전 메트릭 스키마는 운영에 배포된 적이 없으므로 운영 데이터 마이그레이션은 필요하지 않다. 개발용 로컬 DB에 이전 형태의 문서나 인덱스가 남아 있으면 해당 메트릭 컬렉션만 초기화한 뒤 애플리케이션을 다시 시작해 새 인덱스를 생성한다.
+
+아래 명령은 **로컬 개발 DB의 메트릭 문서와 인덱스를 모두 삭제한다. 원격 호스트나 운영 DB에서는 실행하지 않는다.** 먼저 로컬 개발 애플리케이션을 종료하고 대상이 `127.0.0.1:27017/WhereMyBus`인지 확인한다. URI를 운영 환경변수로 대체하지 않는다. 다른 컬렉션은 삭제하지 않는다.
+
+```bash
+mongosh 'mongodb://127.0.0.1:27017/WhereMyBus' --eval 'db.getCollection("bus_api_metrics").drop()'
+```
+
+배포 후 승인된 운영 DB 연결에서 다음 읽기 전용 명령을 실행한다. `getIndexes()`의 키, 이름, unique 및 TTL 옵션을 위 표와 대조한다. 기본 `_id_`를 포함하면 총 다섯 개다.
+
+```javascript
+db.getSiblingDB('WhereMyBus').bus_api_metrics.getIndexes();
+db.getSiblingDB('WhereMyBus').bus_api_metrics.findOne();
+```
+
+### 인증된 조회와 요일 필터
+
+로그인된 브라우저의 개발자 도구에서 다음 same-origin 요청을 확인한다. `/api/dashboard/metric-dimensions`도 인증이 필요하며 로그인 전에는 401이다. 코드나 cookie 값을 명령에 복사하지 않는다.
+
+```javascript
+fetch('/api/dashboard/metric-dimensions', { credentials: 'same-origin' })
+  .then((response) => response.json())
+  .then(console.log);
+fetch(
+  '/api/dashboard/metrics?range=7d&providers=seoul-bus&operations=bus-arrival',
+  { credentials: 'same-origin' },
+)
+  .then((response) => response.json())
+  .then(console.log);
+```
+
+카탈로그 응답은 `providers: [{ key: "seoul-bus", label: "서울 버스", operations: [{ key: "bus-arrival", label: "버스 도착 정보" }] }]`를 포함한다. `providers`와 `operations`는 허용된 키의 CSV이며 생략하면 전체 분류를 선택한다. 빈 값, 미등록 키, 반복 query parameter는 400이다. 기간은 `24h`, `7d`, `30d`, `90d`만 허용한다.
+
+metrics 응답의 `filters`에는 해석된 `providers`와 `operations` 배열이 있고, 각 `series` 항목은 `start`(`+09:00`), `weekday`(월요일 1부터 일요일 7), `requestCount`, `errorCount`를 포함한다. `timezone`은 `Asia/Seoul`이다. 오늘/이번 달 요청은 전체 API 합계이며 선택 기간 요청/오류/오류율과 마지막 수집 시각은 선택한 분류 기준이다.
+
+`weekdays` query는 지원하지 않으며 요청하면 400이다. 요일 선택 및 전체/평일/주말 preset은 이미 받은 `series[].weekday`를 브라우저에서 필터링한다. 선택 기간 카드와 차트만 바뀌고 네트워크 요청은 발생하지 않는다. 제공기관/호출 API 선택은 필터 적용 버튼을 누를 때 한 번 조회한다. 초기화는 화면의 선택 상태를 전체로 되돌리며 분류 재조회는 필터 적용 시 수행한다.
+
+배포 후 Network 탭에서 카탈로그와 모든 기간 조회가 200인지, 분류 query 및 응답이 일치하는지, 월/수 선택이나 preset 조작에 metrics 요청이 추가되지 않는지 확인한다. 데이터가 없는 요일 조합은 선택 기간 요청/오류가 0이고 차트에 빈 데이터 안내가 표시되어야 한다. 오늘/이번 달 카드는 전체 합계를 유지한다.
+
 1. 버스 API 호출이 없는 분 확인
 2. MongoDB에 해당 분 metric 문서가 생기지 않았는지 확인
 3. 테스트 버스 API 요청 발생
