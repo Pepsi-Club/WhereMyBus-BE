@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { BusApiMetricRepository } from './bus-api-metric.repository';
+import { SEOUL_BUS_ARRIVAL_METRIC } from './bus-api-metric.dimension';
 
 type MutableBucket = {
   requestCount: number;
@@ -137,6 +138,7 @@ export class BusApiMetricService implements BeforeApplicationShutdown {
       const errorCount = bucket.errorCount;
       try {
         await this.repository.upsertBucket({
+          ...SEOUL_BUS_ARRIVAL_METRIC,
           bucketStart: new Date(key),
           instanceId: this.instanceId,
           requestCount,

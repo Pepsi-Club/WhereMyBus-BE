@@ -9,6 +9,7 @@ import {
   StoredMetricBucket,
 } from '../bus-api-metric/bus-api-metric.repository';
 import { DashboardMetricService } from './dashboard-metric.service';
+import { SEOUL_BUS_ARRIVAL_METRIC } from '../bus-api-metric/bus-api-metric.dimension';
 
 describe('DashboardMetricService', () => {
   let mongoServer: MongoMemoryServer;
@@ -22,6 +23,7 @@ describe('DashboardMetricService', () => {
     requestCount: number,
     errorCount: number,
   ): StoredMetricBucket => ({
+    ...SEOUL_BUS_ARRIVAL_METRIC,
     bucketStart: new Date(bucketStart),
     instanceId,
     requestCount,

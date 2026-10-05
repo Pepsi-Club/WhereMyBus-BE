@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { BusApiMetric } from './bus-api-metric.schema';
+import {
+  BusApiMetricIdentity,
+  MetricDimensionFilter,
+} from './bus-api-metric.dimension';
 
 export type MetricUnit = 'hour' | 'day';
 
@@ -12,9 +16,10 @@ export interface MetricCounts {
 
 export interface MetricPoint extends MetricCounts {
   start: Date;
+  weekday: number;
 }
 
-export interface StoredMetricBucket extends MetricCounts {
+export interface StoredMetricBucket extends MetricCounts, BusApiMetricIdentity {
   bucketStart: Date;
   instanceId: string;
   expiresAt: Date;
@@ -22,12 +27,6 @@ export interface StoredMetricBucket extends MetricCounts {
 
 interface AggregatedCounts {
   _id: null;
-  requestCount: number;
-  errorCount: number;
-}
-
-interface AggregatedPoint {
-  _id: Date;
   requestCount: number;
   errorCount: number;
 }
@@ -44,18 +43,22 @@ export class BusApiMetricRepository {
       {
         bucketStart: bucket.bucketStart,
         instanceId: bucket.instanceId,
+        provider: bucket.provider,
+        operation: bucket.operation,
       },
       { $set: bucket },
       { upsert: true },
     );
   }
 
-  async sumSince(start: Date, end: Date): Promise<MetricCounts> {
+  async sumSince(
+    start: Date,
+    end: Date,
+    filter?: MetricDimensionFilter,
+  ): Promise<MetricCounts> {
     const [counts] = await this.model.aggregate<AggregatedCounts>([
       {
-        $match: {
-          bucketStart: { $gte: start, $lt: end },
-        },
+        $match: this.rangeMatch(start, end, filter),
       },
       {
         $group: {
@@ -78,12 +81,11 @@ export class BusApiMetricRepository {
     start: Date,
     end: Date,
     unit: MetricUnit,
+    filter?: MetricDimensionFilter,
   ): Promise<MetricPoint[]> {
-    const points = await this.model.aggregate<AggregatedPoint>([
+    return this.model.aggregate<MetricPoint>([
       {
-        $match: {
-          bucketStart: { $gte: start, $lt: end },
-        },
+        $match: this.rangeMatch(start, end, filter),
       },
       {
         $group: {
@@ -99,22 +101,47 @@ export class BusApiMetricRepository {
         },
       },
       { $sort: { _id: 1 } },
+      {
+        $project: {
+          _id: 0,
+          start: '$_id',
+          weekday: {
+            $isoDayOfWeek: { date: '$_id', timezone: 'Asia/Seoul' },
+          },
+          requestCount: 1,
+          errorCount: 1,
+        },
+      },
     ]);
-
-    return points.map((point) => ({
-      start: point._id,
-      requestCount: point.requestCount,
-      errorCount: point.errorCount,
-    }));
   }
 
-  async findLastCollectedAt(): Promise<Date | null> {
+  async findLastCollectedAt(
+    filter?: MetricDimensionFilter,
+  ): Promise<Date | null> {
     const metric = await this.model
-      .findOne()
+      .findOne(this.dimensionMatch(filter))
       .sort({ bucketStart: -1 })
       .select({ bucketStart: 1, _id: 0 })
       .lean();
 
     return metric?.bucketStart ?? null;
+  }
+
+  private rangeMatch(start: Date, end: Date, filter?: MetricDimensionFilter) {
+    return {
+      bucketStart: { $gte: start, $lt: end },
+      ...this.dimensionMatch(filter),
+    };
+  }
+
+  private dimensionMatch(filter?: MetricDimensionFilter) {
+    return {
+      ...(filter?.providers.length
+        ? { provider: { $in: filter.providers } }
+        : {}),
+      ...(filter?.operations.length
+        ? { operation: { $in: filter.operations } }
+        : {}),
+    };
   }
 }
