@@ -1,14 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   BusApiMetricRepository,
   MetricUnit,
 } from '../bus-api-metric/bus-api-metric.repository';
+import {
+  getMetricDimensionCatalog,
+  MetricDimensionFilter,
+  resolveMetricDimensionFilter,
+} from '../bus-api-metric/bus-api-metric.dimension';
 
 export const DASHBOARD_RANGES = ['24h', '7d', '30d', '90d'] as const;
 export type DashboardRange = (typeof DASHBOARD_RANGES)[number];
 
 interface DashboardSeriesPoint {
   start: string;
+  weekday: number;
   requestCount: number;
   errorCount: number;
 }
@@ -16,6 +22,7 @@ interface DashboardSeriesPoint {
 export interface DashboardMetricsResponse {
   range: DashboardRange;
   timezone: 'Asia/Seoul';
+  filters: MetricDimensionFilter;
   summary: {
     todayRequests: number;
     monthRequests: number;
@@ -45,10 +52,19 @@ const RANGE_CONFIG: Record<
 export class DashboardMetricService {
   constructor(private readonly repository: BusApiMetricRepository) {}
 
+  getDimensions() {
+    return getMetricDimensionCatalog();
+  }
+
   async getMetrics(
     range: DashboardRange,
+    selection: { providers?: string[]; operations?: string[] } = {},
     now = new Date(),
   ): Promise<DashboardMetricsResponse> {
+    const filters = resolveMetricDimensionFilter(selection);
+    if (!filters) {
+      throw new BadRequestException('Invalid metric dimension filter');
+    }
     const { durationMs, unit } = RANGE_CONFIG[range];
     const rangeStart = new Date(now.getTime() - durationMs);
     const todayStart = this.startOfSeoulDay(now);
@@ -58,14 +74,15 @@ export class DashboardMetricService {
       await Promise.all([
         this.repository.sumSince(todayStart, now),
         this.repository.sumSince(monthStart, now),
-        this.repository.sumSince(rangeStart, now),
-        this.repository.aggregateSeries(rangeStart, now, unit),
-        this.repository.findLastCollectedAt(),
+        this.repository.sumSince(rangeStart, now, filters),
+        this.repository.aggregateSeries(rangeStart, now, unit, filters),
+        this.repository.findLastCollectedAt(filters),
       ]);
 
     return {
       range,
       timezone: 'Asia/Seoul',
+      filters,
       summary: {
         todayRequests: today.requestCount,
         monthRequests: month.requestCount,
@@ -79,6 +96,7 @@ export class DashboardMetricService {
       },
       series: points.map((point) => ({
         start: this.toSeoulIso(point.start),
+        weekday: point.weekday,
         requestCount: point.requestCount,
         errorCount: point.errorCount,
       })),

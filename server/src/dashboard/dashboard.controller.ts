@@ -16,7 +16,7 @@ import {
 } from './auth/dashboard-auth.service';
 import { DashboardMetricService } from './dashboard-metric.service';
 import { DashboardAuthRequestDto } from './auth/dto/dashboard-auth.request.dto';
-import { DashboardRangeQueryDto } from './dto/dashboard-range.query.dto';
+import { DashboardMetricQueryDto } from './dto/dashboard-metric.query.dto';
 
 @Controller('api/dashboard')
 export class DashboardController {
@@ -47,9 +47,18 @@ export class DashboardController {
   }
 
   @UseGuards(DashboardAuthGuard)
+  @Get('metric-dimensions')
+  metricDimensions() {
+    return this.metricService.getDimensions();
+  }
+
+  @UseGuards(DashboardAuthGuard)
   @Get('metrics')
-  metrics(@Query() query: DashboardRangeQueryDto) {
-    return this.metricService.getMetrics(query.range);
+  metrics(@Query() query: DashboardMetricQueryDto) {
+    return this.metricService.getMetrics(query.range, {
+      providers: query.providers,
+      operations: query.operations,
+    });
   }
 
   @Post('logout')

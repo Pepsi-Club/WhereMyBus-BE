@@ -13,9 +13,23 @@ import { DashboardMetricService } from './dashboard-metric.service';
 describe('DashboardController', () => {
   let app: INestApplication;
   let authService: DashboardAuthService;
+  const metricService = {
+    getMetrics: jest.fn(),
+    getDimensions: jest.fn(),
+  };
+  const dimensionResponse = {
+    providers: [
+      {
+        key: 'seoul-bus',
+        label: '서울 버스',
+        operations: [{ key: 'bus-arrival', label: '버스 도착 정보' }],
+      },
+    ],
+  };
   const metricResponse = {
     range: '24h',
     timezone: 'Asia/Seoul',
+    filters: { providers: ['seoul-bus'], operations: ['bus-arrival'] },
     summary: {
       todayRequests: 3,
       monthRequests: 10,
@@ -49,15 +63,20 @@ describe('DashboardController', () => {
       providers: [
         {
           provide: DashboardMetricService,
-          useValue: { getMetrics: async () => metricResponse },
+          useValue: metricService,
         },
       ],
     }).compile();
 
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ forbidNonWhitelisted: true }));
     await app.init();
     authService = module.get(DashboardAuthService);
+  });
+
+  beforeEach(() => {
+    metricService.getMetrics.mockReset().mockResolvedValue(metricResponse);
+    metricService.getDimensions.mockReset().mockReturnValue(dimensionResponse);
   });
 
   afterAll(async () => {
@@ -73,6 +92,60 @@ describe('DashboardController', () => {
     await request(app.getHttpServer())
       .get('/api/dashboard/metrics?range=24h')
       .expect(401);
+  });
+
+  it('인증되지 않은 metric-dimensions 요청을 거부한다', async () => {
+    await request(app.getHttpServer())
+      .get('/api/dashboard/metric-dimensions')
+      .expect(401);
+  });
+
+  it('인증된 session에 분류 카탈로그를 반환한다', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/dashboard/metric-dimensions')
+      .set('Cookie', sessionCookie())
+      .expect(200)
+      .expect(dimensionResponse);
+
+    expect(JSON.stringify(response.body)).not.toContain('developer-code-1234');
+    expect(JSON.stringify(response.body)).not.toContain(
+      '0123456789abcdef0123456789abcdef',
+    );
+  });
+
+  it.each([
+    'providers=seoul-bus&operations=bus-arrival',
+    'providers=%20seoul-bus%20,seoul-bus&operations=bus-arrival,bus-arrival',
+  ])('분류 CSV %s를 정규화해서 service에 전달한다', async (filters) => {
+    await request(app.getHttpServer())
+      .get(`/api/dashboard/metrics?range=30d&${filters}`)
+      .set('Cookie', sessionCookie())
+      .expect(200);
+
+    expect(metricService.getMetrics).toHaveBeenCalledWith('30d', {
+      providers: ['seoul-bus'],
+      operations: ['bus-arrival'],
+    });
+  });
+
+  it.each([
+    'providers=unknown',
+    'operations=unknown',
+    'providers=',
+    'operations=',
+    'providers=seoul-bus,,seoul-bus',
+    'operations=bus-arrival,,bus-arrival',
+    'providers=seoul-bus&providers=seoul-bus',
+    'operations=bus-arrival&operations=bus-arrival',
+    `providers=${' '.repeat(248)}seoul-bus`,
+    `operations=${' '.repeat(246)}bus-arrival`,
+    'providers[]=seoul-bus',
+    'operations[]=bus-arrival',
+  ])('잘못된 분류 query %s는 400을 반환한다', async (filters) => {
+    await request(app.getHttpServer())
+      .get(`/api/dashboard/metrics?range=24h&${filters}`)
+      .set('Cookie', sessionCookie())
+      .expect(400);
   });
 
   it('올바른 코드로 보안 속성이 적용된 cookie를 발급한다', async () => {
