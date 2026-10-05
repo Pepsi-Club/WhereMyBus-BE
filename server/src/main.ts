@@ -9,7 +9,9 @@ export async function configureApplication(
   app: INestApplication,
   configService: ConfigService,
 ): Promise<void> {
-  app.useGlobalPipes(new ValidationPipe({ forbidNonWhitelisted: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+  );
   app.getHttpAdapter().getInstance().set('trust proxy', 'loopback');
   app.enableShutdownHooks();
 
