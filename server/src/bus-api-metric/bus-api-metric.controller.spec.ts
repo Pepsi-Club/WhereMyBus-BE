@@ -1,13 +1,13 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import * as request from 'supertest';
 import { BusApiMetricController } from './bus-api-metric.controller';
-import { DashboardAuthGuard } from './dashboard-auth.guard';
+import { DashboardAuthModule } from '../dashboard/auth/dashboard-auth.module';
 import {
   DASHBOARD_SESSION_COOKIE,
   DashboardAuthService,
-} from './dashboard-auth.service';
+} from '../dashboard/auth/dashboard-auth.service';
 import { DashboardMetricService } from './dashboard-metric.service';
 
 describe('BusApiMetricController', () => {
@@ -29,21 +29,24 @@ describe('BusApiMetricController', () => {
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          ignoreEnvFile: true,
+          load: [
+            () => ({
+              DASHBOARD_ENABLED: 'true',
+              DASHBOARD_ACCESS_CODE: 'developer-code-1234',
+              DASHBOARD_SESSION_SECRET: '0123456789abcdef0123456789abcdef',
+              DASHBOARD_SESSION_TTL_SECONDS: '28800',
+              DASHBOARD_LOGIN_MAX_ATTEMPTS: '5',
+              DASHBOARD_LOGIN_WINDOW_SECONDS: '900',
+            }),
+          ],
+        }),
+        DashboardAuthModule,
+      ],
       controllers: [BusApiMetricController],
       providers: [
-        DashboardAuthService,
-        DashboardAuthGuard,
-        {
-          provide: ConfigService,
-          useValue: new ConfigService({
-            DASHBOARD_ENABLED: 'true',
-            DASHBOARD_ACCESS_CODE: 'developer-code-1234',
-            DASHBOARD_SESSION_SECRET: '0123456789abcdef0123456789abcdef',
-            DASHBOARD_SESSION_TTL_SECONDS: '28800',
-            DASHBOARD_LOGIN_MAX_ATTEMPTS: '5',
-            DASHBOARD_LOGIN_WINDOW_SECONDS: '900',
-          }),
-        },
         {
           provide: DashboardMetricService,
           useValue: { getMetrics: async () => metricResponse },

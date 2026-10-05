@@ -1,13 +1,28 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+const DEFAULT_LOGIN_MAX_ATTEMPTS = 5;
+const DEFAULT_LOGIN_WINDOW_SECONDS = 900;
 const DEFAULT_MAX_TRACKED_IPS = 10_000;
 
+@Injectable()
 export class DashboardLoginAttemptLimiter {
   private readonly attemptsByIp = new Map<string, number[]>();
+  private readonly maxAttempts: number;
+  private readonly windowMilliseconds: number;
+  private readonly maxTrackedIps = DEFAULT_MAX_TRACKED_IPS;
 
-  constructor(
-    private readonly maxAttempts: number,
-    private readonly windowMilliseconds: number,
-    private readonly maxTrackedIps = DEFAULT_MAX_TRACKED_IPS,
-  ) {}
+  constructor(configService: ConfigService) {
+    this.maxAttempts = this.positiveInteger(
+      configService.get<string>('DASHBOARD_LOGIN_MAX_ATTEMPTS'),
+      DEFAULT_LOGIN_MAX_ATTEMPTS,
+    );
+    this.windowMilliseconds =
+      this.positiveInteger(
+        configService.get<string>('DASHBOARD_LOGIN_WINDOW_SECONDS'),
+        DEFAULT_LOGIN_WINDOW_SECONDS,
+      ) * 1_000;
+  }
 
   hasReachedLimit(ip: string, now: Date): boolean {
     this.removeExpiredAttempts(now);
@@ -48,5 +63,12 @@ export class DashboardLoginAttemptLimiter {
     if (oldestIp !== undefined) {
       this.attemptsByIp.delete(oldestIp);
     }
+  }
+
+  private positiveInteger(value: string | undefined, fallback: number): number {
+    const configured = Number(value);
+    return Number.isInteger(configured) && configured > 0
+      ? configured
+      : fallback;
   }
 }

@@ -16,21 +16,15 @@ interface SessionPayload {
 }
 
 const DEFAULT_SESSION_TTL_SECONDS = 28_800;
-const DEFAULT_LOGIN_MAX_ATTEMPTS = 5;
-const DEFAULT_LOGIN_WINDOW_SECONDS = 900;
 const MIN_ACCESS_CODE_LENGTH = 12;
 const MIN_SESSION_SECRET_LENGTH = 32;
 
 @Injectable()
 export class DashboardAuthService {
-  private readonly loginAttemptLimiter: DashboardLoginAttemptLimiter;
-
-  constructor(private readonly configService: ConfigService) {
-    this.loginAttemptLimiter = new DashboardLoginAttemptLimiter(
-      this.loginMaxAttempts,
-      this.loginWindowSeconds * 1_000,
-    );
-  }
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly loginAttemptLimiter: DashboardLoginAttemptLimiter,
+  ) {}
 
   authenticate(code: string, ip: string, now = new Date()): void {
     this.assertEnabled();
@@ -113,20 +107,6 @@ export class DashboardAuthService {
 
   private get sessionSecret(): string {
     return this.configService.get<string>('DASHBOARD_SESSION_SECRET', '');
-  }
-
-  private get loginMaxAttempts(): number {
-    return this.positiveInteger(
-      'DASHBOARD_LOGIN_MAX_ATTEMPTS',
-      DEFAULT_LOGIN_MAX_ATTEMPTS,
-    );
-  }
-
-  private get loginWindowSeconds(): number {
-    return this.positiveInteger(
-      'DASHBOARD_LOGIN_WINDOW_SECONDS',
-      DEFAULT_LOGIN_WINDOW_SECONDS,
-    );
   }
 
   private isEnabled(): boolean {

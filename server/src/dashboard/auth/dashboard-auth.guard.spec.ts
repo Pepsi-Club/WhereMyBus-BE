@@ -9,6 +9,7 @@ import {
   DashboardAuthService,
 } from './dashboard-auth.service';
 import { DashboardAuthGuard } from './dashboard-auth.guard';
+import { DashboardLoginAttemptLimiter } from './dashboard-login-attempt-limiter';
 
 describe('DashboardAuthGuard', () => {
   const config = (enabled = 'true') =>
@@ -19,6 +20,12 @@ describe('DashboardAuthGuard', () => {
       DASHBOARD_SESSION_TTL_SECONDS: '28800',
     });
 
+  const createAuth = (configService = config()) =>
+    new DashboardAuthService(
+      configService,
+      new DashboardLoginAttemptLimiter(configService),
+    );
+
   const contextWithCookie = (cookie?: string): ExecutionContext =>
     ({
       switchToHttp: () => ({
@@ -27,7 +34,7 @@ describe('DashboardAuthGuard', () => {
     } as ExecutionContext);
 
   it('서명된 session cookie를 허용한다', () => {
-    const auth = new DashboardAuthService(config());
+    const auth = createAuth();
     const guard = new DashboardAuthGuard(auth);
     const token = auth.createSession();
 
@@ -43,7 +50,7 @@ describe('DashboardAuthGuard', () => {
   });
 
   it('cookie가 없거나 변조됐으면 401을 반환한다', () => {
-    const auth = new DashboardAuthService(config());
+    const auth = createAuth();
     const guard = new DashboardAuthGuard(auth);
 
     expect(() => guard.canActivate(contextWithCookie())).toThrow(
@@ -57,9 +64,7 @@ describe('DashboardAuthGuard', () => {
   });
 
   it('비활성 Dashboard는 404를 반환한다', () => {
-    const guard = new DashboardAuthGuard(
-      new DashboardAuthService(config('false')),
-    );
+    const guard = new DashboardAuthGuard(createAuth(config('false')));
 
     expect(() => guard.canActivate(contextWithCookie())).toThrow(
       NotFoundException,
