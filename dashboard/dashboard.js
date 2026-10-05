@@ -380,6 +380,7 @@
       range: rangeSelect.value,
     };
     let dimensionRequestGeneration = 0;
+    let dashboardInitializationGeneration = null;
     let dimensionsReady = false;
     const chartRenderer = createChartRenderer(
       resolveChartConstructor,
@@ -686,7 +687,16 @@
     }
 
     async function loadDashboard(authGeneration) {
-      if (await loadDimensions(authGeneration)) await loadMetrics();
+      dashboardInitializationGeneration = authGeneration;
+      let initialized;
+      try {
+        initialized = await loadDimensions(authGeneration);
+      } finally {
+        if (dashboardInitializationGeneration === authGeneration) {
+          dashboardInitializationGeneration = null;
+        }
+      }
+      if (initialized) await loadMetrics();
     }
 
     async function loadMetrics() {
@@ -833,6 +843,8 @@
         return;
       }
       logoutPending = true;
+      const initializationInterrupted =
+        dashboardInitializationGeneration !== null;
       const generation = beginAuthRequest();
       setStatus("로그아웃 중입니다.", false);
       try {
@@ -849,7 +861,15 @@
         setStatus("로그아웃했습니다.", false);
       } catch (error) {
         if (isCurrentAuthRequest(generation)) {
-          setStatus("로그아웃하지 못했습니다. 잠시 후 다시 시도하세요.", true);
+          if (initializationInterrupted && !dashboardView.hidden) {
+            await loadDashboard(generation);
+          }
+          if (isCurrentAuthRequest(generation) && !dashboardView.hidden) {
+            setStatus(
+              "로그아웃하지 못했습니다. 잠시 후 다시 시도하세요.",
+              true
+            );
+          }
         }
       } finally {
         logoutPending = false;

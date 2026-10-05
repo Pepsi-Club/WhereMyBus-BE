@@ -1281,6 +1281,107 @@ describe('Dashboard metric filters', () => {
     expect(FakeChart.instances).toHaveLength(2);
   });
 
+  it.each([
+    ['HTTP', 'before'],
+    ['HTTP', 'after'],
+    ['network', 'before'],
+    ['network', 'after'],
+  ])(
+    'catalog 대기 중 logout %s 실패는 초기화를 복구하고 이전 catalog가 %s 도착해도 무시한다',
+    async (failure, catalogArrival) => {
+      const document = new FakeDocument();
+      const initialCatalog = deferred<FakeResponse>();
+      const logout = deferred<FakeResponse>();
+      const requests: string[] = [];
+      let catalogRequests = 0;
+      let activeCookieMutations = 0;
+      const fetchFn: FetchFn = async (url) => {
+        requests.push(url);
+        if (url.endsWith('/session')) return response(200);
+        if (url.endsWith('/logout')) {
+          activeCookieMutations += 1;
+          expect(activeCookieMutations).toBe(1);
+          try {
+            const result = await logout.promise;
+            if (failure === 'network') throw new Error('offline');
+            return result;
+          } finally {
+            activeCookieMutations -= 1;
+          }
+        }
+        if (url.endsWith('/auth')) {
+          throw new Error('login must not overlap pending logout');
+        }
+        if (url.endsWith('/metric-dimensions')) {
+          catalogRequests += 1;
+          if (catalogRequests === 1) return initialCatalog.promise;
+          expect(activeCookieMutations).toBe(0);
+          return response(200, catalog);
+        }
+        expect(activeCookieMutations).toBe(0);
+        return response(200, metricsPayload(7));
+      };
+
+      mount(document, fetchFn, () => FakeChart);
+      await settleAsyncWork();
+      expect(requests).toEqual([
+        '/api/dashboard/session',
+        '/api/dashboard/metric-dimensions',
+      ]);
+      const signingOut = document
+        .getElementById('logout-button')
+        .dispatch('click');
+      await settleAsyncWork();
+      await document.getElementById('login-form').dispatch('submit');
+      await document.getElementById('logout-button').dispatch('click');
+      expect(requests).toHaveLength(3);
+      const staleCatalog = response(200, {
+        providers: [
+          {
+            key: 'stale',
+            label: 'stale',
+            operations: [{ key: 'stale', label: 'stale' }],
+          },
+        ],
+      });
+      if (catalogArrival === 'before') {
+        initialCatalog.resolve(staleCatalog);
+        await settleAsyncWork();
+      }
+      logout.resolve(response(500));
+      await signingOut;
+      await settleAsyncWork();
+
+      expect(requests).toEqual([
+        '/api/dashboard/session',
+        '/api/dashboard/metric-dimensions',
+        '/api/dashboard/logout',
+        '/api/dashboard/metric-dimensions',
+        '/api/dashboard/metrics?range=24h',
+      ]);
+      expect(document.getElementById('dashboard-view').hidden).toBe(false);
+      expect(document.getElementById('filter-apply').disabled).toBe(false);
+      expect(document.getElementById('dimension-state').textContent).toBe('');
+      expect(document.getElementById('range-requests').textContent).toBe('7');
+      expect(document.getElementById('status-message').textContent).toContain(
+        '로그아웃하지 못했습니다',
+      );
+      expect(options(document, 'provider').map((input) => input.value)).toEqual(
+        ['seoul-bus', 'metro'],
+      );
+      expect(activeCookieMutations).toBe(0);
+      if (catalogArrival === 'after') {
+        initialCatalog.resolve(staleCatalog);
+        await settleAsyncWork();
+        expect(requests).toHaveLength(5);
+        expect(
+          options(document, 'provider').map((input) => input.value),
+        ).toEqual(['seoul-bus', 'metro']);
+        expect(document.getElementById('range-requests').textContent).toBe('7');
+      }
+    },
+  );
+
   it('catalog 실패는 dimension을 비활성화하지만 unfiltered metrics를 불러온다', async () => {
     const document = new FakeDocument();
     const requests: string[] = [];
