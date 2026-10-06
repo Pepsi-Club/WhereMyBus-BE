@@ -94,7 +94,9 @@
               return { x: point.timestamp, y: point.requestCount };
             }),
             borderColor: "#2563eb",
-            backgroundColor: "rgba(37, 99, 235, 0.12)",
+            backgroundColor: "rgba(37, 99, 235, 0.08)",
+            borderWidth: 2,
+            tension: 0.28,
             fill: true,
             pointRadius: pointRadius,
             pointHoverRadius: 5,
@@ -104,9 +106,11 @@
             data: points.map(function (point) {
               return { x: point.timestamp, y: point.errorCount };
             }),
-            borderColor: "#dc2626",
-            backgroundColor: "#dc2626",
-            borderDash: [6, 4],
+            borderColor: "#c53f4f",
+            backgroundColor: "#c53f4f",
+            borderWidth: 1.5,
+            borderDash: [5, 4],
+            tension: 0.28,
             fill: false,
             pointRadius: pointRadius,
             pointHoverRadius: 5,
@@ -120,8 +124,23 @@
         animation: reducedMotion ? false : { duration: 250 },
         interaction: { mode: "index", intersect: false, axis: "x" },
         plugins: {
-          legend: { display: true, position: "top", align: "end" },
+          legend: {
+            display: true,
+            position: "top",
+            align: "end",
+            labels: {
+              usePointStyle: true,
+              pointStyle: "line",
+              color: "#475467",
+              boxWidth: 24,
+              boxHeight: 8,
+              padding: 18,
+            },
+          },
           tooltip: {
+            backgroundColor: "#111827",
+            padding: 12,
+            cornerRadius: 7,
             callbacks: {
               title: function (items) {
                 return items.length
@@ -152,12 +171,21 @@
             ticks: {
               autoSkip: true,
               maxRotation: 0,
+              color: "#7b8492",
+              padding: 10,
               callback: function (timestamp) {
                 return formatChartTimestamp(timestamp, range, false);
               },
             },
+            grid: { color: "#edf0f3", drawTicks: false },
+            border: { color: "#dfe3e8" },
           },
-          y: { beginAtZero: true, ticks: { precision: 0 } },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: "#7b8492", padding: 10 },
+            grid: { color: "#edf0f3", drawTicks: false },
+            border: { display: false },
+          },
         },
       },
     };

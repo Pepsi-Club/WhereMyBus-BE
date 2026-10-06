@@ -15,16 +15,13 @@
     <script src="/dashboard/dashboard.js" defer></script>
   </head>
   <body>
-    <main class="page-shell">
-      <section
-        id="login-view"
-        class="login-panel"
-        aria-labelledby="login-title"
-      >
-        <p class="eyebrow">WHERE MY BUS · OPERATIONS</p>
-        <h1 id="login-title">버스 API Dashboard</h1>
+    <section id="login-view" class="login-view" aria-labelledby="login-title">
+      <div class="login-panel">
+        <div class="brand-mark" aria-hidden="true">WM</div>
+        <p class="eyebrow">WHERE MY BUS · ADMIN</p>
+        <h1 id="login-title">Operations Console</h1>
         <p class="login-copy">
-          운영 통계를 확인하려면 개발자 코드를 입력하세요.
+          버스 API 운영 지표를 확인하려면 개발자 코드를 입력하세요.
         </p>
         <form id="login-form" class="login-form">
           <label for="access-code">개발자 코드</label>
@@ -35,20 +32,40 @@
             autocomplete="current-password"
             required
           />
-          <button type="submit">Dashboard 열기</button>
+          <button type="submit">Console 열기</button>
         </form>
-      </section>
+      </div>
+    </section>
 
-      <section
-        id="dashboard-view"
-        class="dashboard"
-        hidden
-        aria-labelledby="dashboard-title"
-      >
+    <section
+      id="dashboard-view"
+      class="dashboard admin-shell"
+      hidden
+      aria-labelledby="dashboard-title"
+    >
+      <aside class="admin-sidebar">
+        <div class="admin-brand">
+          <span class="brand-mark" aria-hidden="true">WM</span>
+          <span><strong>WhereMyBus</strong><small>Admin Console</small></span>
+        </div>
+        <nav aria-label="관리자 메뉴" class="admin-nav">
+          <a class="admin-nav-link" href="/dashboard/" aria-current="page">
+            <span class="nav-indicator" aria-hidden="true"></span>
+            API Metrics
+          </a>
+        </nav>
+        <div class="admin-sidebar-footer">
+          <span class="environment-dot" aria-hidden="true"></span>
+          Production metrics
+        </div>
+      </aside>
+
+      <main class="admin-main">
         <header class="dashboard-header">
           <div>
-            <p class="eyebrow">BUS API · ASIA/SEOUL</p>
-            <h1 id="dashboard-title">호출량 Dashboard</h1>
+            <p class="eyebrow">OPERATIONS / API METRICS</p>
+            <h1 id="dashboard-title">API Metrics</h1>
+            <p class="header-copy">서울 버스 도착 정보 API 호출 현황</p>
           </div>
           <div class="header-actions">
             <button id="refresh-button" class="secondary" type="button">
@@ -61,48 +78,36 @@
         </header>
 
         <div id="summary-cards" class="summary-grid" aria-live="polite">
-          <article class="summary-card accent-blue">
-            <span>오늘 요청</span>
+          <article class="summary-card">
+            <span class="summary-label">오늘 요청</span>
             <strong id="today-requests">0</strong>
+            <p class="summary-context">이번 달 <b id="month-requests">0</b></p>
           </article>
-          <article class="summary-card accent-violet">
-            <span>이번 달 요청</span>
-            <strong id="month-requests">0</strong>
-          </article>
-          <article class="summary-card accent-green">
-            <span>선택 기간 요청</span>
+          <article class="summary-card">
+            <span class="summary-label">선택 기간 요청</span>
             <strong id="range-requests">0</strong>
+            <p class="summary-context">필터 적용 결과</p>
           </article>
-          <article class="summary-card accent-orange">
-            <span>선택 기간 오류</span>
+          <article class="summary-card">
+            <span class="summary-label">선택 기간 오류</span>
             <strong id="range-errors">0</strong>
+            <p class="summary-context">요청 실패 합계</p>
           </article>
-          <article class="summary-card accent-red">
-            <span>오류율</span>
+          <article class="summary-card error-summary">
+            <span class="summary-label">오류율</span>
             <strong id="error-rate">0.00%</strong>
+            <p class="summary-context">선택 기간 기준</p>
           </article>
         </div>
 
-        <section class="chart-panel" aria-labelledby="chart-title">
-          <div class="chart-toolbar">
-            <div>
-              <p class="eyebrow">REQUEST TREND</p>
-              <h2 id="chart-title">기간별 요청 추이</h2>
-            </div>
-            <label>
-              <span>조회 기간</span>
-              <select id="range-select" aria-label="조회 기간">
-                <option value="24h">최근 24시간</option>
-                <option value="7d">최근 7일</option>
-                <option value="30d">최근 30일</option>
-                <option value="90d">최근 90일</option>
-              </select>
-            </label>
-          </div>
+        <div class="metrics-workspace">
           <section class="metric-filters" aria-labelledby="metric-filter-title">
             <div class="filter-heading">
-              <h3 id="metric-filter-title">조회 필터</h3>
-              <button id="filter-reset" class="secondary" type="button">
+              <div>
+                <p class="section-kicker">FILTERS</p>
+                <h2 id="metric-filter-title">조회 조건</h2>
+              </div>
+              <button id="filter-reset" class="secondary compact" type="button">
                 초기화
               </button>
             </div>
@@ -111,7 +116,7 @@
               <div class="filter-presets" aria-label="요일 빠른 선택">
                 <button
                   id="weekday-preset-all"
-                  class="secondary"
+                  class="secondary compact"
                   type="button"
                   data-weekday-preset="all"
                 >
@@ -119,7 +124,7 @@
                 </button>
                 <button
                   id="weekday-preset-weekday"
-                  class="secondary"
+                  class="secondary compact"
                   type="button"
                   data-weekday-preset="weekday"
                 >
@@ -127,7 +132,7 @@
                 </button>
                 <button
                   id="weekday-preset-weekend"
-                  class="secondary"
+                  class="secondary compact"
                   type="button"
                   data-weekday-preset="weekend"
                 >
@@ -147,27 +152,45 @@
             <p id="dimension-state" role="status" aria-live="polite"></p>
             <button id="filter-apply" type="button" disabled>필터 적용</button>
           </section>
-          <div class="chart-container">
-            <canvas
-              id="request-chart"
-              role="img"
-              aria-label="선택 기간 요청 및 오류 추이"
-            ></canvas>
-            <p
-              id="chart-state"
-              class="chart-state"
-              role="status"
-              aria-live="polite"
-              hidden
-            ></p>
-          </div>
-          <p class="collected-at">
-            마지막 수집: <time id="last-collected-at">수집 내역 없음</time>
-          </p>
-        </section>
-      </section>
 
-      <p id="status-message" role="status" aria-live="polite"></p>
-    </main>
+          <section class="chart-panel" aria-labelledby="chart-title">
+            <div class="chart-toolbar">
+              <div>
+                <p class="section-kicker">REQUEST TREND</p>
+                <h2 id="chart-title">기간별 요청 추이</h2>
+              </div>
+              <label>
+                <span>조회 기간</span>
+                <select id="range-select" aria-label="조회 기간">
+                  <option value="24h">최근 24시간</option>
+                  <option value="7d">최근 7일</option>
+                  <option value="30d">최근 30일</option>
+                  <option value="90d">최근 90일</option>
+                </select>
+              </label>
+            </div>
+            <div class="chart-container">
+              <canvas
+                id="request-chart"
+                role="img"
+                aria-label="선택 기간 요청 및 오류 추이"
+              ></canvas>
+              <p
+                id="chart-state"
+                class="chart-state"
+                role="status"
+                aria-live="polite"
+                hidden
+              ></p>
+            </div>
+            <p class="collected-at">
+              마지막 수집: <time id="last-collected-at">수집 내역 없음</time>
+            </p>
+          </section>
+        </div>
+
+        <p id="status-message" role="status" aria-live="polite"></p>
+      </main>
+    </section>
   </body>
 </html>

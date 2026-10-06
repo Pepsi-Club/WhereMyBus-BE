@@ -48,7 +48,12 @@ type ChartConfig = {
     animation: false | { duration: number };
     interaction: { mode: string; intersect: boolean; axis: string };
     plugins: {
-      legend: { display: boolean; position: string; align: string };
+      legend: {
+        display: boolean;
+        position: string;
+        align: string;
+        labels?: { usePointStyle: boolean; pointStyle: string };
+      };
       tooltip: {
         callbacks: {
           title: (items: TooltipItem[]) => string;
@@ -426,7 +431,7 @@ describe('Dashboard static helpers', () => {
     });
     expect(config.data.datasets[1]).toMatchObject({
       label: '오류',
-      borderDash: [6, 4],
+      borderDash: [5, 4],
       fill: false,
       pointRadius: 3,
       pointHoverRadius: 5,
@@ -449,6 +454,10 @@ describe('Dashboard static helpers', () => {
     expect(config.options.scales.x.ticks.callback(1790780400000)).toBe(
       '10. 1. 00:00',
     );
+    expect(config.options.plugins.legend.labels).toMatchObject({
+      usePointStyle: true,
+      pointStyle: 'line',
+    });
   });
 
   it('sparse series를 정렬하여 두 dataset의 숫자 x 좌표를 실제 시간 간격으로 배치한다', () => {
@@ -1469,22 +1478,35 @@ describe('Dashboard chart renderer', () => {
 });
 
 describe('Dashboard static markup', () => {
-  it('filter는 640px에서 쌓이고 chart의 620px 및 360/280px 크기는 유지한다', () => {
+  it('확장 가능한 관리자 shell에 현재 API Metrics 메뉴만 노출한다', () => {
+    const html = readFileSync(
+      resolve(__dirname, '../../../dashboard/index.html'),
+      'utf8',
+    );
+
+    expect(html).toMatch(/<aside[^>]+class="admin-sidebar"/);
+    expect(html).toMatch(/<nav[^>]+aria-label="관리자 메뉴"/);
+    expect(html).toMatch(/<main[^>]+class="admin-main"/);
+    expect(html).toContain('aria-current="page"');
+    expect(html.match(/class="admin-nav-link/g)).toHaveLength(1);
+  });
+
+  it('900px에서 chart와 filter를 쌓고 620px에서 chart 높이를 줄인다', () => {
     const css = readFileSync(
       resolve(__dirname, '../../../dashboard/dashboard.css'),
       'utf8',
     );
-    const filterMedia = css.match(
-      /@media \(max-width: 640px\) \{([\s\S]*?)(?=@media|$)/,
+    const tabletMedia = css.match(
+      /@media \(max-width: 900px\) \{([\s\S]*?)(?=@media|$)/,
     );
-    expect(filterMedia).not.toBeNull();
-    expect(filterMedia?.[1]).toMatch(
-      /\.metric-filters\s*\{\s*grid-template-columns: minmax\(0, 1fr\);\s*\}/,
+    expect(tabletMedia).not.toBeNull();
+    expect(tabletMedia?.[1]).toMatch(
+      /\.metrics-workspace\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);[\s\S]*grid-template-areas:\s*"chart"\s*"filters";/,
     );
-    expect(filterMedia?.[1]).not.toContain('.chart-container');
-    expect(css).toMatch(/\.chart-container\s*\{[^}]*height: 360px;/);
+    expect(tabletMedia?.[1]).toMatch(/\.admin-sidebar\s*\{[^}]*height: auto;/);
+    expect(css).toMatch(/\.chart-container\s*\{[^}]*height: 400px;/);
     expect(css).toMatch(
-      /@media \(max-width: 620px\) \{[\s\S]*\.chart-container\s*\{\s*height: 280px;/,
+      /@media \(max-width: 620px\) \{[\s\S]*\.chart-container\s*\{[\s\S]*height: 300px;/,
     );
   });
 
