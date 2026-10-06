@@ -29,13 +29,20 @@ export class BusInfoService {
 
   async arriveStation(arsId: string): Promise<ResponseData> {
     const startedAt = new Date();
-    this.metricRecorder.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
+    const completeMetric = this.metricRecorder.startRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      startedAt,
+    );
     const requestUrl = `${this.apiUrl}?ServiceKey=${this.serviceKey}&arsId=${arsId}&resultType=json`;
     try {
       return (await axios.get(requestUrl)).data;
     } catch (error) {
-      this.metricRecorder.recordError(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
+      if (completeMetric) {
+        this.metricRecorder.recordError(SEOUL_BUS_ARRIVAL_METRIC, startedAt);
+      }
       throw error;
+    } finally {
+      completeMetric?.();
     }
   }
 }

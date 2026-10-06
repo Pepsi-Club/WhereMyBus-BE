@@ -383,6 +383,12 @@ button.secondary:hover {
   }
 }
 
+@media (max-width: 640px) {
+  .metric-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 620px) {
   .page-shell {
     width: min(100% - 20px, 1180px);
@@ -407,10 +413,6 @@ button.secondary:hover {
 
   .summary-grid {
     grid-template-columns: 1fr;
-  }
-
-  .metric-filters {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .summary-card {

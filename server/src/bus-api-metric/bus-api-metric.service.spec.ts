@@ -4,6 +4,8 @@ import { BusApiMetricRepository } from './bus-api-metric.repository';
 import { BusApiMetricService } from './bus-api-metric.service';
 import { StoredMetricBucket } from './bus-api-metric.repository';
 import { SEOUL_BUS_ARRIVAL_METRIC } from './bus-api-metric.dimension';
+import axios from 'axios';
+import { BusInfoService } from '../bus-info/bus-info.service';
 
 class InMemoryMetricRepository {
   saved: StoredMetricBucket[] = [];
@@ -76,7 +78,8 @@ describe('BusApiMetricService', () => {
   });
 
   afterEach(() => {
-    loggerError.mockRestore();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it('호출 없는 minute는 저장하지 않는다', async () => {
@@ -225,6 +228,193 @@ describe('BusApiMetricService', () => {
     expect(repository.saved).toHaveLength(1);
     expect(repository.saved[0]).toMatchObject({
       bucketStart: new Date('2026-09-30T00:00:00.000Z'),
+      requestCount: 1,
+      errorCount: 0,
+    });
+  });
+
+  const busInfo = (metrics: BusApiMetricService) =>
+    new BusInfoService(
+      new ConfigService({ BUS_INFO_API: 'https://example.test/bus' }),
+      metrics,
+    );
+
+  it('최종 write 중 BusInfo catch가 기록한 지연 오류까지 shutdown에 저장한다', async () => {
+    let rejectRequest: (error: Error) => void;
+    jest.spyOn(axios, 'get').mockReturnValue(
+      new Promise((_, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    const failure = new Error('delayed upstream failure');
+    const request = busInfo(service).arriveStation('22285');
+    const failed = expect(request).rejects.toBe(failure);
+    const gate = repository.blockNextWrite();
+    const shutdown = service.beforeApplicationShutdown();
+    await gate.started;
+    rejectRequest(failure);
+    await failed;
+    gate.release();
+    await shutdown;
+
+    expect(repository.saved).toHaveLength(1);
+    expect(repository.saved[0]).toMatchObject({
+      requestCount: 1,
+      errorCount: 1,
+    });
+  });
+
+  it('첫 최종 write가 끝나도 종료 전에 받은 BusInfo 요청의 catch를 기다린다', async () => {
+    let rejectRequest: (error: Error) => void;
+    jest.spyOn(axios, 'get').mockReturnValue(
+      new Promise((_, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    const failure = new Error('later upstream failure');
+    const failed = expect(busInfo(service).arriveStation('22285')).rejects.toBe(
+      failure,
+    );
+    let finished = false;
+    const shutdown = service.beforeApplicationShutdown().then(() => {
+      finished = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const finishedBeforeRequest = finished;
+    rejectRequest(failure);
+    await failed;
+    await shutdown;
+
+    expect(finishedBeforeRequest).toBe(false);
+    expect(repository.saved[0]).toMatchObject({
+      requestCount: 1,
+      errorCount: 1,
+    });
+  });
+
+  it('최종 write 중 새로 생긴 bucket도 안정된 마지막 drain에 저장한다', async () => {
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-10-05T00:00:10Z'),
+    );
+    const gate = repository.blockNextWrite();
+    const shutdown = service.beforeApplicationShutdown();
+    await gate.started;
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-10-05T00:01:10Z'),
+    );
+    const finalGate = repository.blockNextWrite();
+    gate.release();
+    await finalGate.started;
+    service.recordRequest(
+      { provider: 'other-bus', operation: 'bus-arrival' },
+      new Date('2026-10-05T00:01:10Z'),
+    );
+    finalGate.release();
+    await shutdown;
+
+    expect(repository.saved.map(({ requestCount }) => requestCount)).toEqual([
+      1, 1, 1,
+    ]);
+  });
+
+  it('종료 시작 후 새 BusInfo 호출은 정상 응답하지만 metric producer를 추가하지 않는다', async () => {
+    const data = { msgHeader: { headerCd: '0' }, msgBody: { itemList: [] } };
+    jest.spyOn(axios, 'get').mockResolvedValue({ data });
+    service.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, new Date());
+    const gate = repository.blockNextWrite();
+    const shutdown = service.beforeApplicationShutdown();
+    await gate.started;
+    await expect(busInfo(service).arriveStation('22285')).resolves.toBe(data);
+    gate.release();
+    await shutdown;
+    await service.flushCompletedBuckets(new Date(Date.now() + 60_000));
+
+    expect(repository.saved[0]).toMatchObject({
+      requestCount: 1,
+      errorCount: 0,
+    });
+  });
+
+  it('settle하지 않는 BusInfo producer도 5초 종료 예산을 넘기지 않는다', async () => {
+    // Installed Jest 28 accepts options, while the retained Jest 27 types do not.
+    jest.useFakeTimers({ legacyFakeTimers: true } as unknown as 'legacy');
+    jest.spyOn(axios, 'get').mockReturnValue(new Promise(() => undefined));
+    void busInfo(service).arriveStation('22285');
+    let finished = false;
+    const shutdown = service.beforeApplicationShutdown().then(() => {
+      finished = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    const finishedBeforeDeadline = finished;
+    jest.advanceTimersByTime(5_000);
+    await shutdown;
+
+    expect(finishedBeforeDeadline).toBe(false);
+    expect(repository.saved[0]).toMatchObject({
+      requestCount: 1,
+      errorCount: 0,
+    });
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.stringContaining('shutdown deadline'),
+    );
+  });
+
+  it('멈춘 최종 write도 5초 후 종료하고 해제된 write 뒤 추가 저장을 시작하지 않는다', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: true } as unknown as 'legacy');
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-10-05T00:00:10Z'),
+    );
+    service.recordRequest(
+      SEOUL_BUS_ARRIVAL_METRIC,
+      new Date('2026-10-05T00:01:10Z'),
+    );
+    const gate = repository.blockNextWrite();
+    const shutdown = service.beforeApplicationShutdown();
+    await gate.started;
+    jest.advanceTimersByTime(5_000);
+    await shutdown;
+    expect(repository.saved).toEqual([]);
+    gate.release();
+    await service.flushCompletedBuckets(new Date('2026-10-05T00:02:00Z'));
+
+    expect(repository.saved).toHaveLength(1);
+    expect(repository.saved[0].bucketStart).toEqual(
+      new Date('2026-10-05T00:00:00Z'),
+    );
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.stringContaining('shutdown deadline'),
+    );
+  });
+
+  it('종료 예산 이후의 upstream 오류는 원래 오류를 유지하고 닫힌 metric을 변경하지 않는다', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: true } as unknown as 'legacy');
+    let rejectRequest: (error: Error) => void;
+    jest.spyOn(axios, 'get').mockReturnValue(
+      new Promise((_, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    const failure = new Error('after deadline');
+    const request = busInfo(service).arriveStation('22285');
+    const failed = expect(request).rejects.toBe(failure);
+    const gate = repository.blockNextWrite();
+    const shutdown = service.beforeApplicationShutdown();
+    await gate.started;
+    gate.release();
+    await Promise.resolve();
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await shutdown;
+    rejectRequest(failure);
+    await failed;
+    await service.flushCompletedBuckets(new Date(Date.now() + 60_000));
+
+    expect(repository.saved[0]).toMatchObject({
       requestCount: 1,
       errorCount: 0,
     });

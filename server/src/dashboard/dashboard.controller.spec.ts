@@ -69,7 +69,9 @@ describe('DashboardController', () => {
     }).compile();
 
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ forbidNonWhitelisted: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+    );
     await app.init();
     authService = module.get(DashboardAuthService);
   });
@@ -141,6 +143,8 @@ describe('DashboardController', () => {
     `operations=${' '.repeat(246)}bus-arrival`,
     'providers[]=seoul-bus',
     'operations[]=bus-arrival',
+    'weekdays=1,3',
+    'unexpected=value',
   ])('잘못된 분류 query %s는 400을 반환한다', async (filters) => {
     await request(app.getHttpServer())
       .get(`/api/dashboard/metrics?range=24h&${filters}`)

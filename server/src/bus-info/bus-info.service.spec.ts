@@ -13,6 +13,11 @@ class RecordingMetricService {
   errors: Array<{ identity: BusApiMetricIdentity; at: Date }> = [];
   events: string[] = [];
 
+  startRequest(identity: BusApiMetricIdentity, at: Date): () => void {
+    this.recordRequest(identity, at);
+    return () => undefined;
+  }
+
   recordRequest(identity: BusApiMetricIdentity, at: Date): void {
     this.events.push('metric');
     this.requests.push({ identity, at });

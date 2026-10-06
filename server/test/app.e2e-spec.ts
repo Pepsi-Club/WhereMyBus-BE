@@ -9,6 +9,9 @@ import { SEOUL_BUS_ARRIVAL_METRIC } from '../src/bus-api-metric/bus-api-metric.d
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import axios from 'axios';
+import { BusInfoService } from '../src/bus-info/bus-info.service';
+import { BusApiMetricRepository } from '../src/bus-api-metric/bus-api-metric.repository';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -143,13 +146,44 @@ describe('AppController (e2e)', () => {
     }
   });
 
-  it('실제 AppModule 종료는 Mongo 연결이 닫히기 전에 현재 minute를 저장한다', async () => {
+  it('실제 AppModule 종료는 최종 write 중 BusInfo catch의 오류를 Mongo 연결 종료 전에 저장한다', async () => {
     const at = new Date();
     const bucketStart = new Date(Math.floor(at.getTime() / 60_000) * 60_000);
-    const metrics = app.get(BusApiMetricService);
-    metrics.recordRequest(SEOUL_BUS_ARRIVAL_METRIC, at);
-    metrics.recordError(SEOUL_BUS_ARRIVAL_METRIC, at);
-    await app.close();
+    let rejectRequest: (error: Error) => void;
+    const axiosGet = jest.spyOn(axios, 'get').mockReturnValue(
+      new Promise((_, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    const failure = new Error('delayed upstream failure');
+    const failed = expect(
+      app.get(BusInfoService).arriveStation('22285'),
+    ).rejects.toBe(failure);
+    const repository = app.get(BusApiMetricRepository);
+    const upsert = repository.upsertBucket.bind(repository);
+    let releaseWrite: () => void;
+    let writeStarted: () => void;
+    const started = new Promise<void>((resolve) => {
+      writeStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const writeSpy = jest
+      .spyOn(repository, 'upsertBucket')
+      .mockImplementationOnce(async (bucket) => {
+        writeStarted();
+        await gate;
+        await upsert(bucket);
+      });
+    const shutdown = app.close();
+    await started;
+    rejectRequest(failure);
+    await failed;
+    releaseWrite();
+    await shutdown;
+    axiosGet.mockRestore();
+    writeSpy.mockRestore();
 
     const observer = await createConnection(mongoServer.getUri()).asPromise();
     try {

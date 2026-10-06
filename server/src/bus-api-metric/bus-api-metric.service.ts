@@ -20,6 +20,7 @@ const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RETENTION_DAYS = 400;
 const MAX_PENDING_BUCKETS_PER_DIMENSION = 60;
+const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 @Injectable()
 export class BusApiMetricService implements BeforeApplicationShutdown {
@@ -28,6 +29,11 @@ export class BusApiMetricService implements BeforeApplicationShutdown {
   private readonly instanceId: string;
   private readonly retentionDays: number;
   private flushQueue: Promise<void> = Promise.resolve();
+  private shutdown?: Promise<void>;
+  private closed = false;
+  private activeRequests = 0;
+  private producersIdle?: () => void;
+  private revision = 0;
 
   constructor(
     private readonly repository: BusApiMetricRepository,
@@ -49,8 +55,10 @@ export class BusApiMetricService implements BeforeApplicationShutdown {
   }
 
   recordRequest(identity: BusApiMetricIdentity, at = new Date()): void {
+    if (this.closed) return;
     try {
       this.bucketFor(identity, at).requestCount += 1;
+      this.revision += 1;
       this.trimPendingBuckets();
     } catch (error) {
       this.logger.error('Failed to record bus API request metric');
@@ -58,12 +66,30 @@ export class BusApiMetricService implements BeforeApplicationShutdown {
   }
 
   recordError(identity: BusApiMetricIdentity, at = new Date()): void {
+    if (this.closed) return;
     try {
       this.bucketFor(identity, at).errorCount += 1;
+      this.revision += 1;
       this.trimPendingBuckets();
     } catch (error) {
       this.logger.error('Failed to record bus API error metric');
     }
+  }
+
+  startRequest(
+    identity: BusApiMetricIdentity,
+    at = new Date(),
+  ): (() => void) | undefined {
+    if (this.shutdown || this.closed) return undefined;
+    this.recordRequest(identity, at);
+    this.activeRequests += 1;
+    let completed = false;
+    return () => {
+      if (completed) return;
+      completed = true;
+      this.activeRequests -= 1;
+      if (this.activeRequests === 0) this.producersIdle?.();
+    };
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -71,8 +97,45 @@ export class BusApiMetricService implements BeforeApplicationShutdown {
     await this.enqueueFlush(this.minuteStart(now));
   }
 
-  async beforeApplicationShutdown(): Promise<void> {
+  beforeApplicationShutdown(): Promise<void> {
+    if (this.shutdown) return this.shutdown;
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        this.closed = true;
+        this.producersIdle?.();
+        this.logger.error(
+          'Bus API metric shutdown deadline exceeded; pending metrics may be lost',
+        );
+        resolve();
+      }, SHUTDOWN_TIMEOUT_MS);
+    });
+    this.shutdown = Promise.race([this.drainShutdown(), deadline]).finally(
+      () => {
+        clearTimeout(timer);
+        this.closed = true;
+        this.producersIdle = undefined;
+      },
+    );
+    return this.shutdown;
+  }
+
+  private async drainShutdown(): Promise<void> {
+    // Persist counts already available even if an upstream request never settles.
     await this.enqueueFlush(Number.POSITIVE_INFINITY);
+    if (this.activeRequests > 0 && !this.closed) {
+      await new Promise<void>((resolve) => {
+        this.producersIdle = resolve;
+      });
+    }
+    while (!this.closed) {
+      const revision = this.revision;
+      await this.enqueueFlush(Number.POSITIVE_INFINITY);
+      if (revision === this.revision) {
+        this.closed = true;
+        return;
+      }
+    }
   }
 
   private bucketFor(identity: BusApiMetricIdentity, at: Date): MutableBucket {
@@ -137,6 +200,7 @@ export class BusApiMetricService implements BeforeApplicationShutdown {
       .map(([key]) => key);
 
     for (const key of keys) {
+      if (this.closed) return;
       const bucket = this.buckets.get(key);
       if (!bucket || bucket.requestCount === 0) {
         continue;

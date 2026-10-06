@@ -1469,6 +1469,25 @@ describe('Dashboard chart renderer', () => {
 });
 
 describe('Dashboard static markup', () => {
+  it('filter는 640px에서 쌓이고 chart의 620px 및 360/280px 크기는 유지한다', () => {
+    const css = readFileSync(
+      resolve(__dirname, '../../../dashboard/dashboard.css'),
+      'utf8',
+    );
+    const filterMedia = css.match(
+      /@media \(max-width: 640px\) \{([\s\S]*?)(?=@media|$)/,
+    );
+    expect(filterMedia).not.toBeNull();
+    expect(filterMedia?.[1]).toMatch(
+      /\.metric-filters\s*\{\s*grid-template-columns: minmax\(0, 1fr\);\s*\}/,
+    );
+    expect(filterMedia?.[1]).not.toContain('.chart-container');
+    expect(css).toMatch(/\.chart-container\s*\{[^}]*height: 360px;/);
+    expect(css).toMatch(
+      /@media \(max-width: 620px\) \{[\s\S]*\.chart-container\s*\{\s*height: 280px;/,
+    );
+  });
+
   it('chart 앞에 요일 preset과 native dimension fieldset 및 Apply/Reset을 제공한다', () => {
     const html = readFileSync(
       resolve(__dirname, '../../../dashboard/index.html'),
