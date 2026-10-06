@@ -2,34 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { BusApiMetric } from './bus-api-metric.schema';
-import {
-  BusApiMetricIdentity,
-  MetricDimensionFilter,
-} from './bus-api-metric.dimension';
-
-export type MetricUnit = 'hour' | 'day';
-
-export interface MetricCounts {
-  requestCount: number;
-  errorCount: number;
-}
-
-export interface MetricPoint extends MetricCounts {
-  start: Date;
-  weekday: number;
-}
-
-export interface StoredMetricBucket extends MetricCounts, BusApiMetricIdentity {
-  bucketStart: Date;
-  instanceId: string;
-  expiresAt: Date;
-}
-
-interface AggregatedCounts {
-  _id: null;
-  requestCount: number;
-  errorCount: number;
-}
+import type { MetricDimensionFilter } from './bus-api-metric.dimension';
+import type {
+  AggregatedCounts,
+  MetricCounts,
+  MetricPoint,
+  MetricUnit,
+  StoredMetricBucket,
+} from './bus-api-metric.types';
 
 @Injectable()
 export class BusApiMetricRepository {

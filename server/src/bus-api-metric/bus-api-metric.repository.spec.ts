@@ -1,10 +1,8 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Connection, createConnection, Model } from 'mongoose';
 import { BusApiMetric, BusApiMetricSchema } from './bus-api-metric.schema';
-import {
-  BusApiMetricRepository,
-  StoredMetricBucket,
-} from './bus-api-metric.repository';
+import { BusApiMetricRepository } from './bus-api-metric.repository';
+import type { StoredMetricBucket } from './bus-api-metric.types';
 import {
   BusApiMetricDimension,
   BusApiMetricIdentity,

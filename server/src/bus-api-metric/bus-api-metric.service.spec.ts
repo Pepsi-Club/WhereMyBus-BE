@@ -2,7 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import { BusApiMetricRepository } from './bus-api-metric.repository';
 import { BusApiMetricService } from './bus-api-metric.service';
-import { StoredMetricBucket } from './bus-api-metric.repository';
+import type { StoredMetricBucket } from './bus-api-metric.types';
 import { SEOUL_BUS_ARRIVAL_METRIC } from './bus-api-metric.dimension';
 import axios from 'axios';
 import { BusInfoService } from '../bus-info/bus-info.service';

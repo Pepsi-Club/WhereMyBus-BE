@@ -1,8 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import {
-  BusApiMetricRepository,
-  MetricUnit,
-} from '../bus-api-metric/bus-api-metric.repository';
+import { BusApiMetricRepository } from '../bus-api-metric/bus-api-metric.repository';
+import type { MetricUnit } from '../bus-api-metric/bus-api-metric.types';
 import {
   getMetricDimensionCatalog,
   MetricDimensionFilter,

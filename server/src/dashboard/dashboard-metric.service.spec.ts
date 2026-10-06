@@ -4,10 +4,8 @@ import {
   BusApiMetric,
   BusApiMetricSchema,
 } from '../bus-api-metric/bus-api-metric.schema';
-import {
-  BusApiMetricRepository,
-  StoredMetricBucket,
-} from '../bus-api-metric/bus-api-metric.repository';
+import { BusApiMetricRepository } from '../bus-api-metric/bus-api-metric.repository';
+import type { StoredMetricBucket } from '../bus-api-metric/bus-api-metric.types';
 import { DashboardMetricService } from './dashboard-metric.service';
 import {
   BusApiMetricIdentity,
