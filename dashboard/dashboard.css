@@ -508,14 +508,29 @@ select {
 }
 
 #status-message {
-  min-height: 22px;
-  margin: 14px 0 0;
-  color: var(--muted);
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  z-index: 100;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+  color: #475467;
   font-size: 0.8rem;
   text-align: center;
+  transform: translateX(-50%);
+}
+
+#status-message:empty {
+  display: none;
 }
 
 #status-message[data-state="error"] {
+  border-color: #efc7cd;
+  background: #fff7f8;
   color: var(--danger);
 }
 

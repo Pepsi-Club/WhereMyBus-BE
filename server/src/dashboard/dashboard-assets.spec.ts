@@ -1478,6 +1478,33 @@ describe('Dashboard chart renderer', () => {
 });
 
 describe('Dashboard static markup', () => {
+  function sectionRange(html: string, id: string): [number, number] {
+    const idIndex = html.indexOf(`id="${id}"`);
+    const start = html.lastIndexOf('<section', idIndex);
+    const sectionTag = /<\/?section\b[^>]*>/g;
+    sectionTag.lastIndex = start;
+    let depth = 0;
+    let match: RegExpExecArray | null;
+    while ((match = sectionTag.exec(html))) {
+      depth += match[0].startsWith('</') ? -1 : 1;
+      if (depth === 0) return [start, sectionTag.lastIndex];
+    }
+    throw new Error(`unclosed section: ${id}`);
+  }
+
+  it('인증 상태 메시지는 숨겨지는 login/dashboard view 밖에 둔다', () => {
+    const html = readFileSync(
+      resolve(__dirname, '../../../dashboard/index.html'),
+      'utf8',
+    );
+    const statusIndex = html.indexOf('id="status-message"');
+
+    for (const viewId of ['login-view', 'dashboard-view']) {
+      const [start, end] = sectionRange(html, viewId);
+      expect(statusIndex < start || statusIndex > end).toBe(true);
+    }
+  });
+
   it('확장 가능한 관리자 shell에 현재 API Metrics 메뉴만 노출한다', () => {
     const html = readFileSync(
       resolve(__dirname, '../../../dashboard/index.html'),
