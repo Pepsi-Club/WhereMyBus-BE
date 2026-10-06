@@ -1,7 +1,8 @@
 import { Transform } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsIn, IsOptional } from 'class-validator';
 import { BUS_API_METRIC_DIMENSIONS } from '../../bus-api-metric/bus-api-metric.dimension';
-import { DASHBOARD_RANGES, DashboardRange } from '../dashboard-metric.service';
+import { DASHBOARD_RANGES } from './dashboard-metric.contract';
+import type { DashboardRange } from './dashboard-metric.contract';
 
 const MAX_FILTER_LENGTH = 256;
 const METRIC_PROVIDER_KEYS = BUS_API_METRIC_DIMENSIONS.map(

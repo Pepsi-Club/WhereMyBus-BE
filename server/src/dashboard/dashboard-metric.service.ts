@@ -3,34 +3,13 @@ import { BusApiMetricRepository } from '../bus-api-metric/bus-api-metric.reposit
 import type { MetricUnit } from '../bus-api-metric/bus-api-metric.types';
 import {
   getMetricDimensionCatalog,
-  MetricDimensionFilter,
   resolveMetricDimensionFilter,
 } from '../bus-api-metric/bus-api-metric.dimension';
 
-export const DASHBOARD_RANGES = ['24h', '7d', '30d', '90d'] as const;
-export type DashboardRange = (typeof DASHBOARD_RANGES)[number];
-
-interface DashboardSeriesPoint {
-  start: string;
-  weekday: number;
-  requestCount: number;
-  errorCount: number;
-}
-
-export interface DashboardMetricsResponse {
-  range: DashboardRange;
-  timezone: 'Asia/Seoul';
-  filters: MetricDimensionFilter;
-  summary: {
-    todayRequests: number;
-    monthRequests: number;
-    rangeRequests: number;
-    rangeErrors: number;
-    errorRate: number;
-    lastCollectedAt: string | null;
-  };
-  series: DashboardSeriesPoint[];
-}
+import type {
+  DashboardMetricsResponse,
+  DashboardRange,
+} from './dto/dashboard-metric.contract';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
