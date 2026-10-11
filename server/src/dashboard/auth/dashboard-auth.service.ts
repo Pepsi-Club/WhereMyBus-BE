@@ -1,0 +1,146 @@
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { DashboardLoginAttemptLimiter } from './dashboard-login-attempt-limiter';
+
+export const DASHBOARD_SESSION_COOKIE = 'wmb_dashboard_session';
+
+interface SessionPayload {
+  exp: number;
+}
+
+const DEFAULT_SESSION_TTL_SECONDS = 28_800;
+const MIN_ACCESS_CODE_LENGTH = 12;
+const MIN_SESSION_SECRET_LENGTH = 32;
+
+@Injectable()
+export class DashboardAuthService {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly loginAttemptLimiter: DashboardLoginAttemptLimiter,
+  ) {}
+
+  authenticate(code: string, ip: string, now = new Date()): void {
+    this.assertEnabled();
+    if (this.loginAttemptLimiter.hasReachedLimit(ip, now)) {
+      throw new HttpException(
+        'Too many authentication attempts',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    if (
+      !this.configurationIsValid() ||
+      !this.safeEqual(code, this.accessCode)
+    ) {
+      this.loginAttemptLimiter.recordFailure(ip, now);
+      throw this.authenticationFailed();
+    }
+
+    this.loginAttemptLimiter.reset(ip);
+  }
+
+  createSession(now = new Date()): string {
+    this.assertEnabled();
+    if (!this.configurationIsValid()) {
+      throw this.authenticationFailed();
+    }
+
+    const payload: SessionPayload = {
+      exp: Math.floor(now.getTime() / 1000) + this.sessionTtlSeconds,
+    };
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+      'base64url',
+    );
+    return `${encodedPayload}.${this.sign(encodedPayload)}`;
+  }
+
+  verifySession(token: string, now = new Date()): boolean {
+    if (!this.isEnabled() || !this.configurationIsValid()) {
+      return false;
+    }
+
+    try {
+      const [encodedPayload, signature, extraPart] = token.split('.');
+      if (!encodedPayload || !signature || extraPart) {
+        return false;
+      }
+      if (!this.safeEqual(signature, this.sign(encodedPayload))) {
+        return false;
+      }
+
+      const payload = JSON.parse(
+        Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+      ) as SessionPayload;
+      return (
+        typeof payload.exp === 'number' &&
+        Number.isFinite(payload.exp) &&
+        payload.exp > Math.floor(now.getTime() / 1000)
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  assertEnabled(): void {
+    if (!this.isEnabled()) {
+      throw new NotFoundException();
+    }
+  }
+
+  get sessionTtlSeconds(): number {
+    return this.positiveInteger(
+      'DASHBOARD_SESSION_TTL_SECONDS',
+      DEFAULT_SESSION_TTL_SECONDS,
+    );
+  }
+
+  private get accessCode(): string {
+    return this.configService.get<string>('DASHBOARD_ACCESS_CODE', '');
+  }
+
+  private get sessionSecret(): string {
+    return this.configService.get<string>('DASHBOARD_SESSION_SECRET', '');
+  }
+
+  private isEnabled(): boolean {
+    return this.configService.get<string>('DASHBOARD_ENABLED') === 'true';
+  }
+
+  private configurationIsValid(): boolean {
+    return (
+      this.accessCode.length >= MIN_ACCESS_CODE_LENGTH &&
+      this.sessionSecret.length >= MIN_SESSION_SECRET_LENGTH &&
+      this.accessCode !== this.sessionSecret
+    );
+  }
+
+  private sign(encodedPayload: string): string {
+    return createHmac('sha256', this.sessionSecret)
+      .update(encodedPayload)
+      .digest('base64url');
+  }
+
+  private safeEqual(left: string, right: string): boolean {
+    const leftHash = createHash('sha256').update(left).digest();
+    const rightHash = createHash('sha256').update(right).digest();
+    return timingSafeEqual(leftHash, rightHash);
+  }
+
+  private positiveInteger(key: string, fallback: number): number {
+    const configured = Number(this.configService.get<string>(key));
+    return Number.isInteger(configured) && configured > 0
+      ? configured
+      : fallback;
+  }
+
+  private authenticationFailed(): UnauthorizedException {
+    return new UnauthorizedException('Dashboard authentication failed');
+  }
+}
