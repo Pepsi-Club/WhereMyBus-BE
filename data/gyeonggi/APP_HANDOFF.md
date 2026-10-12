@@ -188,6 +188,8 @@ StationReference { provider, apiStationId, displayNumber? }
 
 ## 6. BE 협업과 배포 순서
 
+구체적인 구현 순서·API payload·마이그레이션·테스트·배포/롤백은 [경기버스 백엔드 개발 계획](../../docs/superpowers/plans/2026-10-12-gyeonggi-backend.md)에 정리했다. 핵심은 기존 `/regular`의 서울 범위 유지와 `/v2/regular` 도입이다. 아래 내용은 해당 계획의 요약이다.
+
 현재 BE는 NestJS + MongoDB + FCM 기반 정기알림 서비스다. 앱 실시간 도착 조회는 [iOS endpoint][ios-endpoint]에서 서울 API를 직접 호출한다. BE `BusInfoService`와 `RegularAlarmService`는 서울 `arsId`, `busRouteId`, `adirection`, `arrmsg1/2` 계약에 묶여 있다. 지역 분기와 경기 도착 변환은 아직 없다.
 
 **현재 `POST /regular`에 경기 stationId를 arsId로 넣으면 안 된다.** 데이터 번들/실시간 경기 조회를 먼저 배포한다면 경기 정기알림 등록 UI는 비활성화해야 한다. 이후 BE 변경이 함께 준비되면 활성화한다.

@@ -2,6 +2,8 @@
 
 2026-10-11 GBIS 공식 기반정보 수집 결과. 앱팀 전달 문서는 [APP_HANDOFF.md](APP_HANDOFF.md).
 
+백엔드 구현 순서·신규 API 계약·마이그레이션·배포 계획: [경기버스 백엔드 개발 계획](../../docs/superpowers/plans/2026-10-12-gyeonggi-backend.md).
+
 | 산출물 | 건수 | 용도 |
 |---|---:|---|
 | [stations.json](snapshots/2026-10-11/stations.json) | 40,971 | 정류소·경로 지점 사전; 검색 노출 필터 필요 |
