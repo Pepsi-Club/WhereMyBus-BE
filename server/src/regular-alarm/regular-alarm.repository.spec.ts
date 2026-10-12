@@ -93,6 +93,25 @@ describe('RegularAlarmRepository token status', () => {
     expect(await model.exists({ _id: String(insertedId) })).toBeNull();
   });
 
+  it('자동 정리 후보 수집 후 무효화된 문서는 보존하고 나머지 활성 문서만 삭제한다', async () => {
+    await model.collection.insertMany([
+      { ...alarm },
+      { ...alarm, deviceToken: 'legacy-active' },
+      { ...alarm, deviceToken: 'new-active', isTokenInvalid: false },
+    ]);
+    const candidates = await repository.findByTimeAndWeekDay('0828', 1);
+    await repository.markTokenInvalid(alarm.deviceToken);
+
+    await repository.deleteAllById(candidates.map((item) => String(item._id)));
+
+    expect(await model.countDocuments()).toBe(1);
+    expect(
+      await model.findOne({ deviceToken: alarm.deviceToken }),
+    ).toMatchObject({
+      isTokenInvalid: true,
+    });
+  });
+
   it('무효 토큰의 모든 시간·요일 문서를 갱신하고 다른 토큰은 보존한다', async () => {
     await model.collection.insertMany([
       { ...alarm },

@@ -49,7 +49,9 @@ export class RegularAlarmRepository {
   }
 
   async deleteAllById(id: string[]) {
-    await this.regularAlarmModel.deleteMany({ _id: { $in: id } }).exec();
+    await this.regularAlarmModel
+      .deleteMany({ _id: { $in: id }, isTokenInvalid: { $ne: true } })
+      .exec();
   }
 
   async markTokenInvalid(deviceToken: string): Promise<number> {
