@@ -10,6 +10,9 @@ export class RegularAlarm {
   @Prop()
   deviceToken: string;
 
+  @Prop({ type: Boolean, default: false })
+  isTokenInvalid?: boolean;
+
   @Prop()
   time: string;
 

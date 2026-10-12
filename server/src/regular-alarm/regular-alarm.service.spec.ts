@@ -16,6 +16,7 @@ import { FcmService } from '../fcm/fcm.service';
 import { RegularAlarmRepository } from './regular-alarm.repository';
 import { BusApiMetricService } from '../bus-api-metric/bus-api-metric.service';
 import { BusApiMetricIdentity } from '../bus-api-metric/bus-api-metric.dimension';
+import { arrivalFixture } from './testing/regular-alarm.fixture';
 
 // TODO mocking, dto 생성 등 리팩토링
 
@@ -41,8 +42,23 @@ describe('RegularAlarmService', () => {
       ],
       providers: [
         RegularAlarmService,
-        BusInfoService,
-        FcmService,
+        {
+          provide: BusInfoService,
+          useValue: {
+            arriveStation: jest
+              .fn()
+              .mockResolvedValue(
+                arrivalFixture({ busRouteId: '121900016', adirection: null }),
+              ),
+          },
+        },
+        {
+          provide: FcmService,
+          useValue: {
+            send: jest.fn().mockResolvedValue('id'),
+            sendWithSubTitle: jest.fn().mockResolvedValue('id'),
+          },
+        },
         RegularAlarmRepository,
         {
           provide: BusApiMetricService,
@@ -249,14 +265,14 @@ describe('RegularAlarmService', () => {
       day: [0, 1, 2, 3, 4, 5, 6],
       adirection: '월암공영차고지',
     };
-    // TODO sendNotification 리팩토링, 파이어베이스 테스트 해결
-    // await service.enrollAlarm(wrong);
-    // await service.enrollAlarm(right);
-    //
-    // await service.sendNotification(service.timeString(now), now.getDay());
-    //
-    // const result = await service.getAll();
-    // expect(result.length).toBe(1);
+    const saved = await Promise.all([
+      service.enrollAlarm(wrong),
+      service.enrollAlarm(right),
+    ]);
+    await service.sendNotification(saved);
+    const result = await service.getAlarmByToken('test');
+    expect(result).toHaveLength(1);
+    expect(result[0].busRoutedId).toBe('121900016');
   });
 
   it('디바이스 토큰으로 저장된 정보를 조회할 수 있다.', async () => {

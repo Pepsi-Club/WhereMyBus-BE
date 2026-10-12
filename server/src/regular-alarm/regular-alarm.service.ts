@@ -6,10 +6,11 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
-import { Item, ResponseData } from '../bus-info/arrival-info.type';
+import { ResponseData } from '../bus-info/arrival-info.type';
 import { GetByTokenResponseDto } from './dto/response/getByToken.response.dto';
 import { RegularAlarmRepository } from './regular-alarm.repository';
 import { MessageUtil } from './MessageUtil';
+import { isInvalidFcmTokenError } from '../fcm/fcm-error';
 @Injectable()
 export class RegularAlarmService {
   private readonly serviceKey;
@@ -67,31 +68,83 @@ export class RegularAlarmService {
     const stationArrivalInfoMap: Map<string, ResponseData> =
       await this.getStationArrivalInfoMap(infos);
 
-    const wrongData = [];
+    const alarmsByToken = new Map<string, RegularAlarm[]>();
+    for (const info of infos) {
+      const group = alarmsByToken.get(info.deviceToken) ?? [];
+      group.push(info);
+      alarmsByToken.set(info.deviceToken, group);
+    }
+    const groups = [...alarmsByToken.values()];
+    const results = await Promise.allSettled(
+      groups.map((group) =>
+        this.sendTokenNotifications(group, stationArrivalInfoMap),
+      ),
+    );
+    const wrongData: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        wrongData.push(...result.value);
+      } else {
+        this.logger.error(
+          `Failed to process alarm group; alarmId=${groups[index][0]._id}`,
+        );
+      }
+    });
+    await this.regularAlarmRepository.deleteAllById(wrongData);
+  }
 
-    infos.forEach((info) => {
-      const busInfo: Item[] = stationArrivalInfoMap
+  private async sendTokenNotifications(
+    infos: RegularAlarm[],
+    arrivals: Map<string, ResponseData>,
+  ): Promise<string[]> {
+    const wrongData: string[] = [];
+    for (const info of infos) {
+      const busInfo = arrivals
         .get(info.arsId)
-        .msgBody.itemList.filter(
+        .msgBody.itemList.find(
           (item) =>
             item.busRouteId === info.busRouteId &&
             (item.adirection === null || item.adirection === info.adirection),
         );
-      if (busInfo.length > 0) {
-        const { subTitle, message } = MessageUtil.getMessageContent(busInfo[0]);
-
-        try {
-          this.fcmService.sendWithSubTitle(info.deviceToken, subTitle, message);
-        } catch (e) {
-          this.logger.error(e);
+      const content = busInfo ? MessageUtil.getMessageContent(busInfo) : null;
+      try {
+        if (content) {
+          await this.fcmService.sendWithSubTitle(
+            info.deviceToken,
+            content.subTitle,
+            content.message,
+          );
+        } else {
+          await this.fcmService.send(
+            info.deviceToken,
+            MESSAGE.NOTIFICATION.ERROR,
+          );
         }
-      } else {
-        this.fcmService.send(info.deviceToken, MESSAGE.NOTIFICATION.ERROR);
-        wrongData.push(info._id);
+      } catch (error) {
+        if (isInvalidFcmTokenError(error)) {
+          await this.invalidateToken(info);
+          return [];
+        }
+        this.logger.error(`FCM send failed; alarmId=${info._id}`);
       }
-    });
+      if (!busInfo) wrongData.push(info._id);
+    }
+    return wrongData;
+  }
 
-    await this.regularAlarmRepository.deleteAllById(wrongData);
+  private async invalidateToken(info: RegularAlarm): Promise<void> {
+    try {
+      const updated = await this.regularAlarmRepository.markTokenInvalid(
+        info.deviceToken,
+      );
+      this.logger.warn(
+        `Invalid FCM token; alarmId=${info._id}; updated=${updated}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist invalid token state; alarmId=${info._id}`,
+      );
+    }
   }
 
   async getStationArrivalInfoMap(infos): Promise<Map<string, ResponseData>> {

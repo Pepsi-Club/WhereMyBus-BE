@@ -12,7 +12,14 @@ export class RegularAlarmRepository {
   ) {}
 
   async saveAlarm(enrollRegularDto: EnrollRequestDto) {
-    const newAlarm = new this.regularAlarmModel(enrollRegularDto);
+    const invalidToken = await this.regularAlarmModel.exists({
+      deviceToken: enrollRegularDto.deviceToken,
+      isTokenInvalid: true,
+    });
+    const newAlarm = new this.regularAlarmModel({
+      ...enrollRegularDto,
+      isTokenInvalid: Boolean(invalidToken),
+    });
     return newAlarm.save();
   }
 
@@ -24,7 +31,10 @@ export class RegularAlarmRepository {
   }
 
   async findByToken(deviceToken: string) {
-    return this.regularAlarmModel.find({ deviceToken });
+    return this.regularAlarmModel.find({
+      deviceToken,
+      isTokenInvalid: { $ne: true },
+    });
   }
 
   async findByTimeAndWeekDay(
@@ -34,10 +44,21 @@ export class RegularAlarmRepository {
     return this.regularAlarmModel.find({
       time: time,
       day: weekday,
+      isTokenInvalid: { $ne: true },
     });
   }
 
   async deleteAllById(id: string[]) {
-    this.regularAlarmModel.deleteMany({ _id: { $in: id } });
+    await this.regularAlarmModel.deleteMany({ _id: { $in: id } }).exec();
+  }
+
+  async markTokenInvalid(deviceToken: string): Promise<number> {
+    const result = await this.regularAlarmModel
+      .updateMany(
+        { deviceToken, isTokenInvalid: { $ne: true } },
+        { $set: { isTokenInvalid: true } },
+      )
+      .exec();
+    return result.modifiedCount;
   }
 }
