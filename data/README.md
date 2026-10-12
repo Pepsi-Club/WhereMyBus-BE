@@ -1,5 +1,13 @@
 # WhereMyBus-BE-data
 
+## 경기 데이터 (2026-10-11)
+
+공식 원본 수집, 앱용 JSON, 재생성 도구: [gyeonggi/README.md](gyeonggi/README.md)
+
+앱 개발팀 전달 문서: [gyeonggi/APP_HANDOFF.md](gyeonggi/APP_HANDOFF.md)
+
+아래 내용은 기존 서울 데이터 수집 절차입니다.
+
 
 ## 개발환경
 ```
