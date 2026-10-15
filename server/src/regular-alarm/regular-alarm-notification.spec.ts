@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { RegularAlarmRepository } from './regular-alarm.repository';
@@ -14,7 +13,11 @@ import {
 describe('RegularAlarm notification token lifecycle', () => {
   let service: RegularAlarmService;
   let fcm: { send: jest.Mock; sendWithSubTitle: jest.Mock };
-  let repository: { markTokenInvalid: jest.Mock; deleteAllById: jest.Mock };
+  let bus: { arriveStation: jest.Mock };
+  let repository: {
+    markTokenInvalid: jest.Mock;
+    deleteActiveAlarmsById: jest.Mock;
+  };
   let errorLog: jest.SpyInstance;
   const first = alarmFixture({ _id: 'alarm-1' });
   const second = alarmFixture({ _id: 'alarm-2' });
@@ -27,14 +30,12 @@ describe('RegularAlarm notification token lifecycle', () => {
     };
     repository = {
       markTokenInvalid: jest.fn().mockResolvedValue(2),
-      deleteAllById: jest.fn().mockResolvedValue(undefined),
+      deleteActiveAlarmsById: jest.fn().mockResolvedValue(undefined),
     };
+    bus = { arriveStation: jest.fn().mockResolvedValue(arrivalFixture()) };
     service = new RegularAlarmService(
       repository as unknown as RegularAlarmRepository,
-      new ConfigService(),
-      {
-        arriveStation: jest.fn().mockResolvedValue(arrivalFixture()),
-      } as unknown as BusInfoService,
+      bus as unknown as BusInfoService,
       fcm as unknown as FcmService,
     );
     errorLog = jest
@@ -62,9 +63,9 @@ describe('RegularAlarm notification token lifecycle', () => {
         'token-a',
         'token-b',
       ]);
-      expect(repository.deleteAllById.mock.calls.flat(2)).not.toContain(
-        'alarm-1',
-      );
+      expect(
+        repository.deleteActiveAlarmsById.mock.calls.flat(2),
+      ).not.toContain('alarm-1');
     },
   );
 
@@ -107,10 +108,14 @@ describe('RegularAlarm notification token lifecycle', () => {
   });
 
   it('FCM 발송과 무효 상태 저장이 모두 끝날 때까지 반환하지 않는다', async () => {
+    const sendStarted = deferred<void>();
     const sent = deferred<string>();
     const written = deferred<number>();
     const writeStarted = deferred<void>();
-    fcm.sendWithSubTitle.mockReturnValueOnce(sent.promise);
+    fcm.sendWithSubTitle.mockImplementationOnce(() => {
+      sendStarted.resolve();
+      return sent.promise;
+    });
     fcm.sendWithSubTitle.mockReturnValueOnce(
       observedRejection({ code: 'messaging/invalid-registration-token' }),
     );
@@ -122,7 +127,7 @@ describe('RegularAlarm notification token lifecycle', () => {
     const pending = service.sendNotification([first, second]).then(() => {
       finished = true;
     });
-    for (let i = 0; i < 10; i++) await Promise.resolve();
+    await sendStarted.promise;
     expect(finished).toBe(false);
     expect(fcm.sendWithSubTitle).toHaveBeenCalledTimes(1);
     sent.resolve('id');
@@ -143,7 +148,9 @@ describe('RegularAlarm notification token lifecycle', () => {
     ]);
     expect(repository.markTokenInvalid).toHaveBeenCalledWith('token-a');
     expect(fcm.sendWithSubTitle).not.toHaveBeenCalled();
-    expect(repository.deleteAllById.mock.calls.flat(2)).not.toContain('wrong');
+    expect(repository.deleteActiveAlarmsById.mock.calls.flat(2)).not.toContain(
+      'wrong',
+    );
   });
 
   it('같은 토큰에서 뒤늦게 무효 판정되면 앞서 모은 노선 오류 문서도 보존한다', async () => {
@@ -155,7 +162,9 @@ describe('RegularAlarm notification token lifecycle', () => {
       second,
     ]);
     expect(repository.markTokenInvalid).toHaveBeenCalledWith('token-a');
-    expect(repository.deleteAllById.mock.calls.flat(2)).not.toContain('wrong');
+    expect(repository.deleteActiveAlarmsById.mock.calls.flat(2)).not.toContain(
+      'wrong',
+    );
   });
 
   it('정상 토큰의 잘못된 노선만 삭제 대상으로 모으고 정상 알림은 유지한다', async () => {
@@ -163,12 +172,33 @@ describe('RegularAlarm notification token lifecycle', () => {
       alarmFixture({ _id: 'wrong', busRouteId: 'missing' }),
       other,
     ]);
-    expect(repository.deleteAllById).toHaveBeenCalledWith(['wrong']);
+    expect(repository.deleteActiveAlarmsById).toHaveBeenCalledWith(['wrong']);
     expect(repository.markTokenInvalid).not.toHaveBeenCalled();
     expect(fcm.sendWithSubTitle).toHaveBeenCalledWith(
       'token-b',
       '[100] 정류장',
       '버스가 3분 후 도착합니다. (2번째 전)',
     );
+  });
+
+  it('한 토큰의 메시지 생성 실패가 다른 토큰 발송과 정리를 중단하지 않는다', async () => {
+    bus.arriveStation.mockImplementation(async (stationId) =>
+      arrivalFixture(stationId === 'broken' ? { arrmsg1: null } : {}),
+    );
+
+    await service.sendNotification([
+      { ...first, arsId: 'broken' },
+      other,
+      { ...other, _id: 'wrong-route', busRouteId: 'missing' },
+    ]);
+
+    expect(fcm.sendWithSubTitle.mock.calls.map(([token]) => token)).toEqual([
+      'token-b',
+    ]);
+    expect(repository.markTokenInvalid).not.toHaveBeenCalled();
+    expect(repository.deleteActiveAlarmsById).toHaveBeenCalledWith([
+      'wrong-route',
+    ]);
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('alarm-1'));
   });
 });

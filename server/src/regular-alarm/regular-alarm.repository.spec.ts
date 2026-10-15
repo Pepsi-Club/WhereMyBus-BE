@@ -32,11 +32,11 @@ describe('RegularAlarmRepository token status', () => {
     await mongo?.stop();
   });
 
-  it('앱 목록과 스케줄 조회는 false 및 필드 없는 기존 문서만 포함한다', async () => {
+  it('앱 목록과 스케줄 조회는 true 및 필드 없는 기존 문서만 포함한다', async () => {
     await model.collection.insertMany([
       { ...alarm },
-      { ...alarm, isTokenInvalid: false },
-      { ...alarm, isTokenInvalid: true },
+      { ...alarm, isTokenValid: true },
+      { ...alarm, isTokenValid: false },
     ]);
     expect(await repository.findByToken('old-token')).toHaveLength(2);
     expect(await repository.findByTimeAndWeekDay('0828', 1)).toHaveLength(2);
@@ -44,33 +44,33 @@ describe('RegularAlarmRepository token status', () => {
     expect(await repository.findByTimeAndWeekDay('0928', 1)).toHaveLength(0);
   });
 
-  it('새로운 토큰을 false로 저장하고 내부 상태 입력은 무시한다', async () => {
+  it('새로운 토큰을 true로 저장하고 내부 상태 입력은 무시한다', async () => {
     const saved = await repository.saveAlarm({
       ...alarm,
-      isTokenInvalid: true,
+      isTokenValid: false,
     } as typeof alarm);
     expect(
       await model.collection.findOne({
         _id: new Types.ObjectId(String(saved._id)),
       }),
-    ).toMatchObject({ isTokenInvalid: false });
+    ).toMatchObject({ isTokenValid: true });
   });
 
   it('이미 무효인 같은 토큰은 재등록해도 상태를 상속한다', async () => {
-    await model.collection.insertOne({ ...alarm, isTokenInvalid: true });
+    await model.collection.insertOne({ ...alarm, isTokenValid: false });
     const saved = await repository.saveAlarm(alarm);
     expect(
       await model.collection.findOne({
         _id: new Types.ObjectId(String(saved._id)),
       }),
-    ).toMatchObject({ isTokenInvalid: true });
+    ).toMatchObject({ isTokenValid: false });
     expect(await repository.findByToken(alarm.deviceToken)).toEqual([]);
   });
 
-  it('deleteAllById는 지정한 문서를 실제로 삭제하고 완료까지 기다린다', async () => {
+  it('deleteActiveAlarmsById는 지정한 문서를 실제로 삭제하고 완료까지 기다린다', async () => {
     const removed = await model.create(alarm);
     const retained = await model.create({ ...alarm, deviceToken: 'other' });
-    await repository.deleteAllById([String(removed._id)]);
+    await repository.deleteActiveAlarmsById([String(removed._id)]);
     expect(await model.exists({ _id: removed._id })).toBeNull();
     expect(await model.exists({ _id: retained._id })).not.toBeNull();
   });
@@ -78,7 +78,7 @@ describe('RegularAlarmRepository token status', () => {
   it('사용자는 무효 알림도 token과 id가 일치하면 삭제할 수 있다', async () => {
     const { insertedId } = await model.collection.insertOne({
       ...alarm,
-      isTokenInvalid: true,
+      isTokenValid: false,
     });
     expect(
       await repository.findOneByIdAndTokenAndDelete(
@@ -97,33 +97,35 @@ describe('RegularAlarmRepository token status', () => {
     await model.collection.insertMany([
       { ...alarm },
       { ...alarm, deviceToken: 'legacy-active' },
-      { ...alarm, deviceToken: 'new-active', isTokenInvalid: false },
+      { ...alarm, deviceToken: 'new-active', isTokenValid: true },
     ]);
     const candidates = await repository.findByTimeAndWeekDay('0828', 1);
     await repository.markTokenInvalid(alarm.deviceToken);
 
-    await repository.deleteAllById(candidates.map((item) => String(item._id)));
+    await repository.deleteActiveAlarmsById(
+      candidates.map((item) => String(item._id)),
+    );
 
     expect(await model.countDocuments()).toBe(1);
     expect(
       await model.findOne({ deviceToken: alarm.deviceToken }),
     ).toMatchObject({
-      isTokenInvalid: true,
+      isTokenValid: false,
     });
   });
 
   it('무효 토큰의 모든 시간·요일 문서를 갱신하고 다른 토큰은 보존한다', async () => {
     await model.collection.insertMany([
       { ...alarm },
-      { ...alarm, time: '1900', day: [6], isTokenInvalid: false },
-      { ...alarm, isTokenInvalid: true },
-      { ...alarm, deviceToken: 'other', isTokenInvalid: false },
+      { ...alarm, time: '1900', day: [6], isTokenValid: true },
+      { ...alarm, isTokenValid: false },
+      { ...alarm, deviceToken: 'other', isTokenValid: true },
     ]);
     expect(await repository.markTokenInvalid(alarm.deviceToken)).toBe(2);
     expect(
       await model.countDocuments({
         deviceToken: alarm.deviceToken,
-        isTokenInvalid: true,
+        isTokenValid: false,
       }),
     ).toBe(3);
     expect(await repository.findByToken('other')).toHaveLength(1);
@@ -145,7 +147,7 @@ describe('RegularAlarmRepository token status', () => {
     const failure = new Error('database unavailable');
     jest.spyOn(model.collection, 'deleteMany').mockRejectedValueOnce(failure);
     await expect(
-      repository.deleteAllById([new Types.ObjectId().toString()]),
+      repository.deleteActiveAlarmsById([new Types.ObjectId().toString()]),
     ).rejects.toBe(failure);
   });
 });

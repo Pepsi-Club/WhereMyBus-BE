@@ -1,5 +1,4 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { Connection, createConnection, Model, Types } from 'mongoose';
@@ -44,7 +43,6 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
         RegularAlarmService,
         RegularAlarmRepository,
         FcmService,
-        { provide: ConfigService, useValue: new ConfigService() },
         { provide: getModelToken(RegularAlarm.name), useValue: model },
         { provide: BusInfoService, useValue: bus },
       ],
@@ -118,7 +116,7 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
       expect(
         await model.countDocuments({
           deviceToken: alarm.deviceToken,
-          isTokenInvalid: true,
+          isTokenValid: false,
         }),
       ).toBe(3);
       expect(await model.countDocuments()).toBe(4);
@@ -149,7 +147,7 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
       .query({ deviceToken: alarm.deviceToken })
       .expect(200);
     expect(response.body).toHaveLength(1);
-    expect(await model.countDocuments({ isTokenInvalid: true })).toBe(0);
+    expect(await model.countDocuments({ isTokenValid: false })).toBe(0);
   });
 
   it('상태 저장 실패 시 문서를 유지하고 다음 예약에서 다시 판정한다', async () => {
@@ -159,9 +157,9 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
       .spyOn(model.collection, 'updateMany')
       .mockRejectedValueOnce(new Error('database unavailable'));
     await service.regularAlarm();
-    expect(await model.countDocuments({ isTokenInvalid: false })).toBe(1);
+    expect(await model.countDocuments({ isTokenValid: true })).toBe(1);
     await service.regularAlarm();
-    expect(await model.countDocuments({ isTokenInvalid: true })).toBe(1);
+    expect(await model.countDocuments({ isTokenValid: false })).toBe(1);
     expect(sdkSend).toHaveBeenCalledTimes(2);
   });
 
@@ -179,13 +177,13 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
   it('클라이언트는 무효 상태 필드를 직접 지정할 수 없다', async () => {
     await request(app.getHttpServer())
       .post('/regular')
-      .send({ ...alarm, isTokenInvalid: false })
+      .send({ ...alarm, isTokenValid: true })
       .expect(400);
     expect(await model.countDocuments()).toBe(0);
   });
 
   it('같은 무효 토큰 재등록은 숨기고 새로운 토큰은 활성화한다', async () => {
-    await model.create({ ...alarm, isTokenInvalid: true });
+    await model.create({ ...alarm, isTokenValid: false });
     await request(app.getHttpServer()).post('/regular').send(alarm).expect(201);
     await request(app.getHttpServer())
       .post('/regular')
@@ -203,13 +201,13 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
     expect(
       await model.countDocuments({
         deviceToken: alarm.deviceToken,
-        isTokenInvalid: true,
+        isTokenValid: false,
       }),
     ).toBe(2);
   });
 
   it('무효 토큰 문서는 다른 기기가 삭제할 수 없고 본인 토큰으로 삭제할 수 있다', async () => {
-    const saved = await model.create({ ...alarm, isTokenInvalid: true });
+    const saved = await model.create({ ...alarm, isTokenValid: false });
     await request(app.getHttpServer())
       .delete('/regular')
       .query({ deviceToken: 'other', alarmId: saved.id })
@@ -227,7 +225,7 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
       code: 'messaging/registration-token-not-registered',
     });
     await service.regularAlarm();
-    expect(await model.countDocuments({ isTokenInvalid: true })).toBe(1);
+    expect(await model.countDocuments({ isTokenValid: false })).toBe(1);
     expect(await model.countDocuments()).toBe(1);
   });
 });
