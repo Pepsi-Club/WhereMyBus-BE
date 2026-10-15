@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as admin from 'firebase-admin';
 import { app } from 'firebase-admin';
 import { MESSAGE } from '../common/message';
@@ -6,7 +6,6 @@ import { MESSAGE } from '../common/message';
 @Injectable()
 export class FcmService {
   private readonly firebaseApp: app.App;
-  private logger = new Logger(FcmService.name);
 
   constructor() {
     this.firebaseApp = admin.initializeApp({
@@ -14,7 +13,7 @@ export class FcmService {
     });
   }
 
-  async send(deviceToken: string, message: string) {
+  async send(deviceToken: string, message: string): Promise<string> {
     const payload = {
       token: deviceToken,
       notification: {
@@ -22,14 +21,14 @@ export class FcmService {
         body: message,
       },
     };
-    this.firebaseApp.messaging().send(payload);
+    return this.firebaseApp.messaging().send(payload);
   }
 
   async sendWithSubTitle(
     deviceToken: string,
     subTitle: string,
     message: string,
-  ) {
+  ): Promise<string> {
     const payload = {
       token: deviceToken,
       apns: {
@@ -44,11 +43,6 @@ export class FcmService {
         },
       },
     };
-    try {
-      this.firebaseApp.messaging().send(payload);
-    } catch (e) {
-      console.log(e);
-      this.logger.error(e);
-    }
+    return this.firebaseApp.messaging().send(payload);
   }
 }

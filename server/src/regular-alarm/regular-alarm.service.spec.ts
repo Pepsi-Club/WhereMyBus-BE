@@ -10,14 +10,10 @@ import {
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { BusInfoService } from '../bus-info/bus-info.service';
 import { FcmService } from '../fcm/fcm.service';
 import { RegularAlarmRepository } from './regular-alarm.repository';
-import { BusApiMetricService } from '../bus-api-metric/bus-api-metric.service';
-import { BusApiMetricIdentity } from '../bus-api-metric/bus-api-metric.dimension';
-
-// TODO mocking, dto 생성 등 리팩토링
+import { arrivalFixture } from './testing/regular-alarm.fixture';
 
 describe('RegularAlarmService', () => {
   let service: RegularAlarmService;
@@ -35,24 +31,27 @@ describe('RegularAlarmService', () => {
         MongooseModule.forFeature([
           { name: RegularAlarm.name, schema: RegularAlarmSchema },
         ]),
-        ConfigModule.forRoot({
-          envFilePath: '.env.dev',
-        }),
       ],
       providers: [
         RegularAlarmService,
-        BusInfoService,
-        FcmService,
-        RegularAlarmRepository,
         {
-          provide: BusApiMetricService,
+          provide: BusInfoService,
           useValue: {
-            recordRequest: (_identity: BusApiMetricIdentity, _at: Date) =>
-              undefined,
-            recordError: (_identity: BusApiMetricIdentity, _at: Date) =>
-              undefined,
+            arriveStation: jest
+              .fn()
+              .mockResolvedValue(
+                arrivalFixture({ busRouteId: '121900016', adirection: null }),
+              ),
           },
         },
+        {
+          provide: FcmService,
+          useValue: {
+            send: jest.fn().mockResolvedValue('id'),
+            sendWithSubTitle: jest.fn().mockResolvedValue('id'),
+          },
+        },
+        RegularAlarmRepository,
       ],
     }).compile();
 
@@ -84,14 +83,13 @@ describe('RegularAlarmService', () => {
     expect(result.arsId).toBe('1234');
   });
 
-  it('알 수 없는 값으로 삭제하면 예외가 발생한다', () => {
-    expect(async () => {
-      const dto = new EnrollRequestDto();
-      await service.deleteAlarm('test', '66083b42b0df3085dd413f2e');
-    }).rejects.toThrow(BadRequestException);
+  it('알 수 없는 값으로 삭제하면 예외가 발생한다', async () => {
+    await expect(
+      service.deleteAlarm('test', '66083b42b0df3085dd413f2e'),
+    ).rejects.toThrow(BadRequestException);
   });
 
-  it('시간은 4자로 주어져야 한다.', () => {
+  it('시간은 4자로 주어져야 한다.', async () => {
     const metadata: ArgumentMetadata = {
       type: 'body',
       metatype: EnrollRequestDto,
@@ -116,16 +114,16 @@ describe('RegularAlarmService', () => {
       adirection: '월암공영차고지',
     };
 
-    expect(async () => {
-      await target.transform(<EnrollRequestDto>dto1, metadata);
-    }).rejects.toThrow(BadRequestException);
+    await expect(target.transform(dto1, metadata)).rejects.toThrow(
+      BadRequestException,
+    );
 
-    expect(async () => {
-      await target.transform(<EnrollRequestDto>dto2, metadata);
-    }).rejects.toThrow(BadRequestException);
+    await expect(target.transform(dto2, metadata)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
-  it('알람을 울릴 날짜는 1개 이상, 7개이하로 주어져야한다.', () => {
+  it('알람을 울릴 날짜는 1개 이상, 7개이하로 주어져야한다.', async () => {
     const metadata: ArgumentMetadata = {
       type: 'body',
       metatype: EnrollRequestDto,
@@ -150,13 +148,13 @@ describe('RegularAlarmService', () => {
       adirection: '월암공영차고지',
     };
 
-    expect(async () => {
-      await target.transform(<EnrollRequestDto>dto1, metadata);
-    }).rejects.toThrow(BadRequestException);
+    await expect(target.transform(dto1, metadata)).rejects.toThrow(
+      BadRequestException,
+    );
 
-    expect(async () => {
-      await target.transform(<EnrollRequestDto>dto2, metadata);
-    }).rejects.toThrow(BadRequestException);
+    await expect(target.transform(dto2, metadata)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('현재 시간을 올바르게 포매팅할 수 있다.', () => {
@@ -249,14 +247,14 @@ describe('RegularAlarmService', () => {
       day: [0, 1, 2, 3, 4, 5, 6],
       adirection: '월암공영차고지',
     };
-    // TODO sendNotification 리팩토링, 파이어베이스 테스트 해결
-    // await service.enrollAlarm(wrong);
-    // await service.enrollAlarm(right);
-    //
-    // await service.sendNotification(service.timeString(now), now.getDay());
-    //
-    // const result = await service.getAll();
-    // expect(result.length).toBe(1);
+    const saved = await Promise.all([
+      service.enrollAlarm(wrong),
+      service.enrollAlarm(right),
+    ]);
+    await service.sendNotification(saved);
+    const result = await service.getAlarmByToken('test');
+    expect(result).toHaveLength(1);
+    expect(result[0].busRoutedId).toBe('121900016');
   });
 
   it('디바이스 토큰으로 저장된 정보를 조회할 수 있다.', async () => {
@@ -267,7 +265,6 @@ describe('RegularAlarmService', () => {
     dto.deviceToken = 'test';
     dto.day = [1, 2, 3];
 
-    // 3개 저장
     await service.enrollAlarm(dto);
     await service.enrollAlarm(dto);
     await service.enrollAlarm(dto);
