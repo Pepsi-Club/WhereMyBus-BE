@@ -50,12 +50,6 @@ export class RegularAlarmRepository {
     });
   }
 
-  async deleteActiveAlarmsById(alarmIds: string[]): Promise<void> {
-    await this.regularAlarmModel
-      .deleteMany({ _id: { $in: alarmIds }, ...ACTIVE_TOKEN_FILTER })
-      .exec();
-  }
-
   async markTokenInvalid(deviceToken: string): Promise<number> {
     const result = await this.regularAlarmModel
       .updateMany(

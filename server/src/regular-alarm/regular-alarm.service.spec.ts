@@ -227,7 +227,7 @@ describe('RegularAlarmService', () => {
     expect(result[0].time).toBe('0324');
   });
 
-  it('해당 정류장에 존재하지 않는 버스 노선 정보로 등록된 정규알림 정보는 삭제된다.', async () => {
+  it('응답에 노선이 없어도 기존 알림과 정상 알림을 모두 보존한다.', async () => {
     const now = new Date('December 17, 1995 03:24:00');
 
     const wrong = {
@@ -253,8 +253,10 @@ describe('RegularAlarmService', () => {
     ]);
     await service.sendNotification(saved);
     const result = await service.getAlarmByToken('test');
-    expect(result).toHaveLength(1);
-    expect(result[0].busRoutedId).toBe('121900016');
+    expect(result).toHaveLength(2);
+    expect(result.map((alarm) => alarm.busRoutedId)).toEqual(
+      expect.arrayContaining(['1', '121900016']),
+    );
   });
 
   it('디바이스 토큰으로 저장된 정보를 조회할 수 있다.', async () => {
