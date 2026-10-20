@@ -219,6 +219,71 @@ describe('RegularAlarm invalid token lifecycle (e2e)', () => {
     expect(await model.countDocuments()).toBe(0);
   });
 
+  it.each([
+    {
+      scenario: '정상 코드의 빈 응답',
+      headerCd: '0',
+      empty: true,
+      sendError: false,
+    },
+    {
+      scenario: '오류 코드의 빈 응답',
+      headerCd: '4',
+      empty: true,
+      sendError: false,
+    },
+    {
+      scenario: '응답에 등록 노선 누락',
+      headerCd: '0',
+      empty: false,
+      sendError: false,
+    },
+    {
+      scenario: '빈 응답 및 안내 발송 실패',
+      headerCd: '4',
+      empty: true,
+      sendError: true,
+    },
+  ])(
+    '$scenario에서도 알림을 보존하고 응답 복구 후 다시 발송한다',
+    async ({ headerCd, empty, sendError }) => {
+      await request(app.getHttpServer())
+        .post('/regular')
+        .send(alarm)
+        .expect(201);
+      const before = await model.findOne().lean();
+      const arrivals = arrivalFixture({ busRouteId: 'other-route' });
+      arrivals.msgHeader.headerCd = headerCd;
+      if (empty) {
+        arrivals.msgBody.itemList = [];
+        arrivals.msgHeader.itemCount = 0;
+      }
+      bus.arriveStation.mockResolvedValue(arrivals);
+      if (sendError)
+        sdkSend.mockRejectedValue({ code: 'messaging/server-unavailable' });
+
+      await service.regularAlarm();
+
+      expect(await model.findOne().lean()).toEqual(before);
+      const listed = await request(app.getHttpServer())
+        .get('/regular')
+        .query({ deviceToken: alarm.deviceToken })
+        .expect(200);
+      expect(listed.body).toHaveLength(1);
+
+      bus.arriveStation.mockResolvedValue(arrivalFixture());
+      sdkSend.mockReset().mockResolvedValue('message-id');
+      await service.regularAlarm();
+      expect(sdkSend).toHaveBeenCalledTimes(1);
+      expect(sdkSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          token: alarm.deviceToken,
+          apns: expect.any(Object),
+        }),
+      );
+    },
+  );
+
   it('노선 오류 안내 중 무효 판정되면 해당 문서도 삭제 없이 보존한다', async () => {
     await model.create({ ...alarm, busRouteId: 'unknown' });
     sdkSend.mockRejectedValue({

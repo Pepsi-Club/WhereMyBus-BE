@@ -67,14 +67,6 @@ describe('RegularAlarmRepository token status', () => {
     expect(await repository.findByToken(alarm.deviceToken)).toEqual([]);
   });
 
-  it('deleteActiveAlarmsById는 지정한 문서를 실제로 삭제하고 완료까지 기다린다', async () => {
-    const removed = await model.create(alarm);
-    const retained = await model.create({ ...alarm, deviceToken: 'other' });
-    await repository.deleteActiveAlarmsById([String(removed._id)]);
-    expect(await model.exists({ _id: removed._id })).toBeNull();
-    expect(await model.exists({ _id: retained._id })).not.toBeNull();
-  });
-
   it('사용자는 무효 알림도 token과 id가 일치하면 삭제할 수 있다', async () => {
     const { insertedId } = await model.collection.insertOne({
       ...alarm,
@@ -91,27 +83,6 @@ describe('RegularAlarmRepository token status', () => {
       String(insertedId),
     );
     expect(await model.exists({ _id: String(insertedId) })).toBeNull();
-  });
-
-  it('자동 정리 후보 수집 후 무효화된 문서는 보존하고 나머지 활성 문서만 삭제한다', async () => {
-    await model.collection.insertMany([
-      { ...alarm },
-      { ...alarm, deviceToken: 'legacy-active' },
-      { ...alarm, deviceToken: 'new-active', isTokenValid: true },
-    ]);
-    const candidates = await repository.findByTimeAndWeekDay('0828', 1);
-    await repository.markTokenInvalid(alarm.deviceToken);
-
-    await repository.deleteActiveAlarmsById(
-      candidates.map((item) => String(item._id)),
-    );
-
-    expect(await model.countDocuments()).toBe(1);
-    expect(
-      await model.findOne({ deviceToken: alarm.deviceToken }),
-    ).toMatchObject({
-      isTokenValid: false,
-    });
   });
 
   it('무효 토큰의 모든 시간·요일 문서를 갱신하고 다른 토큰은 보존한다', async () => {
@@ -143,11 +114,16 @@ describe('RegularAlarmRepository token status', () => {
     );
   });
 
-  it('알림 삭제 실패를 호출자에게 전달한다', async () => {
+  it('사용자의 명시적 알림 삭제 실패를 호출자에게 전달한다', async () => {
     const failure = new Error('database unavailable');
-    jest.spyOn(model.collection, 'deleteMany').mockRejectedValueOnce(failure);
+    jest
+      .spyOn(model.collection, 'findOneAndDelete')
+      .mockRejectedValueOnce(failure);
     await expect(
-      repository.deleteActiveAlarmsById([new Types.ObjectId().toString()]),
+      repository.findOneByIdAndTokenAndDelete(
+        'old-token',
+        new Types.ObjectId().toString(),
+      ),
     ).rejects.toBe(failure);
   });
 });

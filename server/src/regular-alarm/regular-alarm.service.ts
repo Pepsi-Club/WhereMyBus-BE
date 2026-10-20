@@ -69,26 +69,21 @@ export class RegularAlarmService {
       alarmsByToken.set(alarm.deviceToken, group);
     }
     const groups = [...alarmsByToken.values()];
-    const invalidRouteAlarmIdsByToken = await Promise.all(
+    await Promise.all(
       groups.map((group) =>
         this.sendTokenNotifications(group, stationArrivalInfoMap).catch(() => {
           this.logger.error(
             `Failed to process alarm group; alarmId=${group[0]._id}`,
           );
-          return [];
         }),
       ),
-    );
-    await this.regularAlarmRepository.deleteActiveAlarmsById(
-      invalidRouteAlarmIdsByToken.flat(),
     );
   }
 
   private async sendTokenNotifications(
     alarms: RegularAlarm[],
     arrivals: Map<string, ResponseData>,
-  ): Promise<string[]> {
-    const invalidRouteAlarmIds: string[] = [];
+  ): Promise<void> {
     for (const alarm of alarms) {
       const busInfo = arrivals
         .get(alarm.arsId)
@@ -114,13 +109,11 @@ export class RegularAlarmService {
       } catch (error) {
         if (isInvalidFcmTokenError(error)) {
           await this.invalidateToken(alarm);
-          return [];
+          return;
         }
         this.logger.error(`FCM send failed; alarmId=${alarm._id}`);
       }
-      if (!busInfo) invalidRouteAlarmIds.push(alarm._id);
     }
-    return invalidRouteAlarmIds;
   }
 
   private async invalidateToken(alarm: RegularAlarm): Promise<void> {
